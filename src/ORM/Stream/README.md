@@ -119,9 +119,9 @@ class User implements JsonSerializable {
 
 ## See also
 
-- [`EntityManager::streamBy()`](#)
-- [`EntityManager::persist()`](#)
-- [`EntityManager::update()`](#)
-- [`EntityManager::delete()`](#)
+- [`EntityManager::streamBy()`](https://github.com/kalicki2k/orm/blob/main/src/ORM/EntityManager.php#L536)
+- [`EntityManager::persist()`](https://github.com/kalicki2k/orm/blob/main/src/ORM/EntityManager.php#L163)
+- [`EntityManager::update()`](https://github.com/kalicki2k/orm/blob/main/src/ORM/EntityManager.php#L203)
+- [`EntityManager::delete()`](https://github.com/kalicki2k/orm/blob/main/src/ORM/EntityManager.php#L243)
 - [PHP Manual: stream_wrapper_register](https://www.php.net/manual/en/function.stream-wrapper-register.php)
 

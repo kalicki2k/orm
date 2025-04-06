@@ -26,9 +26,9 @@ class User implements JsonSerializable
     public function jsonSerialize(): mixed
     {
         return [
-            'id'       => $this->id,
+            'id' => $this->id,
             'username' => $this->username,
-            'email'    => $this->email,
+            'email' => $this->email,
         ];
     }
 }

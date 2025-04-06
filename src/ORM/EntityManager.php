@@ -615,12 +615,14 @@ class EntityManager
      * Builds a parameterized SQL SELECT query string with optional WHERE, ORDER BY, LIMIT, and OFFSET clauses.
      *
      * This helper method dynamically constructs a safe SQL SELECT statement based on the provided criteria
-     * and pagination options. It is used internally by methods such as {@see EntityManager::findBy()},
+     * and pagination options. Unknown columns in the criteria (i.e. those not present in the entity metadata)
+     * are automatically filtered out. It is used internally by methods such as {@see EntityManager::findBy()},
      * {@see EntityManager::findOneBy()}, and {@see EntityManager::streamBy()}.
      *
      * @param string $table Quoted table name (including identifier escaping).
-     * @param string $select Comma-separated list of columns to select (already quoted).
+     * @param array $columns Metadata describing the entity's columns, as returned from MetadataParser.
      * @param array $criteria Associative array of field => value pairs for the WHERE clause.
+     *                        Any key not matching a valid column will be ignored.
      * @param array $orderBy Optional. Associative array of column => direction (ASC or DESC).
      * @param int|null $limit Optional. Maximum number of rows to return.
      * @param int|null $offset Optional. Number of rows to skip (useful for pagination).
@@ -632,15 +634,17 @@ class EntityManager
      * @example
      * [$sql, $params] = $this->buildSelectQuery(
      *     "`users`",
-     *     "`id`, `username`, `email`",
-     *     ['status' => 'active'],
+     *     $columns,
+     *     ['status' => 'active', 'format' => 'xml'],
      *     ['created_at' => 'DESC'],
      *     10,
      *     0
      * );
      *
-     * // Resulting SQL:
-     * // SELECT `id`, `username`, `email` FROM `users` WHERE `status` = :status ORDER BY `created_at` DESC LIMIT 10 OFFSET 0
+     * // Resulting SQL
+     * // SELECT `id`, `username`, `email` FROM `users`
+     * //   WHERE `status` = :status
+     * //   ORDER BY `created_at` DESC LIMIT 10 OFFSET 0
      *
      * @see EntityManager::findBy()
      * @see EntityManager::findOneBy()
@@ -658,10 +662,10 @@ class EntityManager
         $params = [];
         $validColumnNames = array_column($columns, 'column');
 
-        // Build WHERE clause based on provided criteria
+        // Build WHERE clause based on provided criteria, filtering out unknown columns.
         foreach ($criteria as $name => $value) {
             if (!in_array($name, $validColumnNames, true)) {
-                throw new InvalidArgumentException("Unknown column '{$name}' in criteria.");
+                continue;
             }
 
             $quoted = $this->databaseDriver->quoteIdentifier($name);
@@ -669,12 +673,12 @@ class EntityManager
             $params[":{$name}"] = $value;
         }
 
-        if (empty($conditions)) {
-            throw new InvalidArgumentException("At least one condition required.");
+        // Build base SELECT query.
+        $fields = $this->buildSelectFields($columns);
+        $sql = "SELECT {$fields} FROM {$table}";
+        if (!empty($conditions)) {
+            $sql .= " WHERE " . implode(" AND ", $conditions);
         }
-
-        // Build base SELECT query
-        $sql = "SELECT {$this->buildSelectFields($columns)} FROM {$table} WHERE " . implode(" AND ", $conditions);
 
         // Append ORDER BY clause if specified
         if (!empty($orderBy)) {

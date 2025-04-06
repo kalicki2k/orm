@@ -19,13 +19,23 @@ stream_wrapper_register("orm", StreamWrapper::class);
 echo "Creating users...\n";
 
 // --- CREATE USERS ---
-$usersToCreate = [
-    ['username' => 'alice', 'email' => 'alice@example.com'],
-    ['username' => 'bob', 'email' => 'bob@example.com'],
-    ['username' => 'charlie', 'email' => 'charlie@example.com'],
-];
 
-$handle = fopen("orm://Entity\\User", "w");
+function generateUsers(int $count = 100): array {
+    $users = [];
+    for ($i = 1; $i <= $count; $i++) {
+        $username = "user{$i}";
+        $email = "{$username}@example.com";
+        $users[] = [
+            'username' => $username,
+            'email'    => $email,
+        ];
+    }
+    return $users;
+}
+
+$usersToCreate = generateUsers(100);
+
+$handle = fopen("orm://Entity\\User", "x");
 foreach ($usersToCreate as $user) {
     fwrite($handle, json_encode($user) . PHP_EOL);
 }
@@ -33,21 +43,36 @@ fclose($handle);
 
 
 // --- READ ALL USERS ---
-echo "\nReading all users...\n";
-$handle = fopen("orm://Entity\\User", "r");
-$users = [];
+//echo "\nReading all users...\n";
+//$handle = fopen("orm://Entity\\User", "r");
+//$users = [];
+//
+//while (!feof($handle)) {
+//    $line = trim(fgets($handle));
+//    if (!empty($line)) {
+//        $decoded = json_decode($line, true);
+//        if (is_array($decoded)) {
+//            $users[] = $decoded;
+//            echo "User: " . json_encode($decoded) . PHP_EOL;
+//        }
+//    }
+//}
+//fclose($handle);
 
+$handle = fopen("orm://Entity\\User?format=xml", "r");
+$xmlOutput = '';
+
+// Lesen: Zeilenweise wird der Stream gelesen, wobei jede Zeile ein XML-Dokument einer Entität enthält.
 while (!feof($handle)) {
     $line = trim(fgets($handle));
     if (!empty($line)) {
-        $decoded = json_decode($line, true);
-        if (is_array($decoded)) {
-            $users[] = $decoded;
-            echo "User: " . json_encode($decoded) . PHP_EOL;
-        }
+        $xmlOutput .= $line . "\n";
     }
 }
 fclose($handle);
+
+echo "XML Output:\n";
+echo $xmlOutput;
 
 
 // --- UPDATE FIRST USER ---

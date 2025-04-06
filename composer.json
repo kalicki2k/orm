@@ -15,6 +15,7 @@
   "require": {
     "php": ">=8.4",
     "ext-pdo": "*",
+    "ext-simplexml": "*",
     "monolog/monolog": "^3.9",
     "psr/log": "^3.0",
     "ramsey/uuid": "^4.7",

@@ -7,6 +7,9 @@ use JsonSerializable;
 use ORM\Drivers\PDODriver;
 use ORM\EntityManager;
 use ORM\Logger\LoggerFactory;
+use ORM\Stream\Format\FormatWriter;
+use ORM\Stream\Format\JsonFormatWriter;
+use ORM\Stream\Format\XmlFormatWriter;
 use ReflectionException;
 
 /**
@@ -14,7 +17,7 @@ use ReflectionException;
  *
  * This allows interaction with ORM-based entities using a URL-like syntax via a custom protocol (e.g. `orm://Entity\\User`).
  *
- * Supports read, write (for updates), and delete operations.
+ * Supports read, write (for updates and creation), and delete operations.
  *
  * @example Reading users
  *   stream_wrapper_register("orm", \ORM\Stream\StreamWrapper::class);
@@ -24,9 +27,19 @@ use ReflectionException;
  *   }
  *   fclose($handle);
  *
- * @example Updating a user
+ * @example Updating a user (write mode "w")
  *   $handle = fopen("orm://Entity\\User", "w");
  *   fwrite($handle, json_encode(['id' => 1, 'email' => 'new@example.com']));
+ *   fclose($handle);
+ *
+ * @example Creating a new user with append mode ("a")
+ *   $handle = fopen("orm://Entity\\User", "a");
+ *   fwrite($handle, json_encode(['username' => 'jane', 'email' => 'jane@example.com']));
+ *   fclose($handle);
+ *
+ * @example Creating a new user with exclusive mode ("x")
+ *   $handle = fopen("orm://Entity\\User", "x");
+ *   fwrite($handle, json_encode(['username' => 'jane', 'email' => 'jane@example.com']));
  *   fclose($handle);
  *
  * @example Deleting a user
@@ -82,10 +95,26 @@ class StreamWrapper
     private array $criteria = [];
 
     /**
+     * The stream mode, e.g. "r", "w", "a", or "x".
+     *
+     * @var string
+     */
+    private string $mode;
+
+    /**
+     * The configured FormatWriter instance.
+     *
+     * @var FormatWriter
+     */
+    private FormatWriter $formatWriter;
+
+    /**
      * Opens the stream and prepares a generator for reading entity data.
      *
-     * @param string $path The full stream URL (e.g. "orm://Entity\\User?status=active")
-     * @param string $mode Stream mode (e.g., "r" for read, "w" for write)
+     * In addition, this method configures the FormatWriter based on the "format" query parameter.
+     *
+     * @param string $path The full stream URL (e.g. "orm://Entity\\User?status=active&format=json")
+     * @param string $mode Stream mode (e.g., "r", "w", "a", "x")
      * @param int $options Stream context options
      * @param string|null $opened_path Not used, but required by interface
      *
@@ -95,6 +124,7 @@ class StreamWrapper
      */
     public function stream_open(string $path, string $mode, int $options, ?string &$opened_path): bool
     {
+        $this->mode = $mode;
         $this->entityManager = new EntityManager(PDODriver::default(), LoggerFactory::create());
 
         $parsed = parse_url($path);
@@ -109,6 +139,9 @@ class StreamWrapper
             parse_str($parsed["query"], $this->criteria);
         }
 
+        $format = $this->criteria['format'] ?? 'json';
+        $this->formatWriter = $this->getFormatWriter($format);
+
         $this->generator = !empty($this->criteria)
             ? $this->entityManager->streamBy($this->entity, $this->criteria)
             : $this->entityManager->streamAll($this->entity);
@@ -119,18 +152,34 @@ class StreamWrapper
     /**
      * Reads and serializes entity records from the generator.
      *
-     * @param int $count Number of bytes to read from the buffer.
-     * @return string The serialized entity data.
+     * This method retrieves entities from an internal generator and serializes each one using the
+     * configured FormatWriter. The serialized entities are appended to an internal buffer along with
+     * a newline (PHP_EOL) after each entity. The process continues until the buffer contains at least
+     * the specified number of bytes ($count) or until there are no more entities available.
+     *
+     * The method then extracts exactly $count bytes from the buffer and returns them, leaving any
+     * remaining data in the buffer for subsequent reads. This approach maintains streaming behavior
+     * while allowing formatted output (e.g., newline-delimited JSON).
+     *
+     * @param int $count Number of bytes to read from the internal buffer.
+     * @return string The serialized entity data as a string of up to $count bytes.
+     *
+     * @example
+     * // Example usage within a stream context:
+     * // Assuming $streamWrapper is an instance of StreamWrapper configured with a FormatWriter,
+     * // the following call reads a chunk of 1024 bytes from the stream.
+     * $dataChunk = $streamWrapper->stream_read(1024);
+     * echo $dataChunk;
+     *
+     * @see \ORM\Stream\Format\FormatWriter::write() Method used to serialize each entity.
+     * @see \ORM\Stream\Format\JsonFormatWriter A specific implementation of FormatWriter for JSON.
      */
     public function stream_read(int $count): string
     {
         while (strlen($this->buffer) < $count && $this->generator?->valid()) {
             $entity = $this->generator->current();
             $this->generator->next();
-
-            $this->buffer .= $entity instanceof JsonSerializable
-                ? json_encode($entity, JSON_UNESCAPED_UNICODE) . PHP_EOL
-                : serialize($entity) . PHP_EOL;
+            $this->buffer .= $this->formatWriter->write($entity) . PHP_EOL;
         }
 
         $output = substr($this->buffer, 0, $count);
@@ -141,12 +190,17 @@ class StreamWrapper
     /**
      * Writes JSON-encoded entity data to the stream.
      *
-     * Depending on whether the primary key is present in the input, this method will either
-     * update an existing entity or insert a new one. The input must be a valid JSON object
-     * that maps property names to values.
+     * Depending on the stream mode and whether the primary key is present in the input,
+     * this method will either update an existing entity or insert a new one.
      *
-     * If the primary key field (as defined by metadata) is missing or empty, the entity will be persisted (INSERT).
-     * If the primary key is present and not null, the entity will be marked for update (UPDATE).
+     * In **"w"** mode: If the primary key field is present and not empty, the entity will be updated; otherwise, a new entity is inserted.
+     *
+     * In **"a"** mode: A new entity is always inserted (appended) regardless of primary key presence.
+     *
+     * In **"x"** mode: A new entity is inserted only if an entity with the same primary key does not already exist.
+     * Otherwise, an error is triggered.
+     *
+     * The input must be a valid JSON object that maps property names to values.
      *
      * @param string $data JSON string representing an entity (e.g., {"email": "new@example.com"})
      * @return int Number of bytes written (equals strlen($data))
@@ -155,12 +209,16 @@ class StreamWrapper
      * @throws ReflectionException If metadata parsing fails during entity hydration.
      *
      * @example
-     * // Insert new user (primary key omitted)
+     * // Insert new user (append mode or no primary key provided)
      * fwrite($handle, json_encode(['username' => 'jane', 'email' => 'jane@example.com']));
      *
      * @example
-     * // Update existing user (primary key included)
+     * // Update existing user (write mode with primary key provided)
      * fwrite($handle, json_encode(['id' => 5, 'email' => 'updated@example.com']));
+     *
+     * @example
+     * // Exclusive creation: Error if entity already exists
+     * fwrite($handle, json_encode(['id' => 5, 'email' => 'jane@example.com']));
      *
      * @see EntityManager::persist()
      * @see EntityManager::update()
@@ -189,10 +247,21 @@ class StreamWrapper
             $entity->$key = $value;
         }
 
-        if (empty($primaryKeyField) || empty($decoded[$primaryKeyField])) {
+        if ($this->mode === 'a' || $this->mode === 'x') {
+            if ($this->mode === 'x' && !empty($primaryKeyField) && !empty($decoded[$primaryKeyField])) {
+                $existing = $this->entityManager->find($entityClass, [$primaryKeyField => $decoded[$primaryKeyField]]);
+                if ($existing) {
+                    trigger_error("Entity already exists", E_USER_WARNING);
+                    return 0;
+                }
+            }
             $this->entityManager->persist($entity);
         } else {
-            $this->entityManager->update($entity);
+            if (empty($primaryKeyField) || empty($decoded[$primaryKeyField])) {
+                $this->entityManager->persist($entity);
+            } else {
+                $this->entityManager->update($entity);
+            }
         }
 
         $this->entityManager->flush();
@@ -266,5 +335,22 @@ class StreamWrapper
         $entityManager->flush();
 
         return true;
+    }
+
+    /**
+     * Factory method to obtain the appropriate FormatWriter instance.
+     *
+     * @param string $format The requested format (e.g., "json", "csv", "yaml").
+     * @return FormatWriter An instance of a FormatWriter for the specified format.
+     */
+    protected function getFormatWriter(string $format): FormatWriter
+    {
+        return match (strtolower($format)) {
+            'json' => new JsonFormatWriter(),
+            // 'csv'  => new \ORM\Stream\Format\CsvFormatWriter(),
+            'xml'  => new XmlFormatWriter(),
+            // 'yaml' => new \ORM\Stream\Format\YamlFormatWriter(),
+            default => new JsonFormatWriter(),
+        };
     }
 }

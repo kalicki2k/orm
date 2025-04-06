@@ -6,7 +6,7 @@ services:
       args:
         APP_ENV: ${APP_ENV}
     image: orm:latest
-    container_name: orm
+    container_name: orm_cli
     develop:
       watch:
         - action: sync+restart
@@ -20,7 +20,7 @@ services:
 
   mariadb:
     image: mariadb:latest
-    container_name: statistics_collector_db
+    container_name: orm_db
     restart: always
     environment:
       - MYSQL_ROOT_PASSWORD=secret

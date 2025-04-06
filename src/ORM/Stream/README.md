@@ -1,15 +1,16 @@
 # ORM StreamWrapper
 
-The `ORM\Stream\StreamWrapper` allows you to interact with your ORM entity classes using native PHP stream functions like `fopen()`, `fgets()`, `fwrite()` and `unlink()`.
+The `ORM\Stream\StreamWrapper` allows you to interact with your ORM entity classes using native PHP stream functions like `fopen()`, `fgets()`, `fwrite()`, and `unlink()`.
 
-This means you can read from and write to your entities using `orm://` URLs as if they were files. It adds a powerful abstraction layer over your database access.
+This means you can read from, write to, update, and delete entities using `orm://` URLs as if they were files. It adds a powerful abstraction layer over your database access.
 
 ---
 
 ## Features
 
 - Read entities lazily (`fopen` + `fgets`)
-- Update entities using `fwrite`
+- Create new entities using `fwrite` (no primary key in input)
+- Update existing entities using `fwrite` (primary key required)
 - Delete entities using `unlink`
 - Native support for JSON serialization (`JsonSerializable`)
 - Entity filtering using query string (`?status=active`)
@@ -44,9 +45,10 @@ fclose($handle);
 $handle = fopen("orm://Entity\\User?status=active", "r");
 ```
 
-### Update (via `fwrite`)
+### Create or Update (via `fwrite`)
 
 ```php
+// Update existing user (requires primary key in input)
 $handle = fopen("orm://Entity\\User", "w");
 fwrite($handle, json_encode([
     'id' => 1,
@@ -55,7 +57,17 @@ fwrite($handle, json_encode([
 fclose($handle);
 ```
 
-> Make sure your entity supports updates by setting the primary key in the input JSON.
+```php
+// Create new user (omit primary key, it will be generated)
+$handle = fopen("orm://Entity\\User", "w");
+fwrite($handle, json_encode([
+    'username' => 'alice',
+    'email' => 'alice@example.com'
+]));
+fclose($handle);
+```
+
+> The system detects whether to insert or update based on presence of the primary key.
 
 ### Delete (via `unlink()`)
 
@@ -99,7 +111,7 @@ class User implements JsonSerializable {
 
 ## Tips
 
-- Use `stream_all_contents("orm://...", "r")` for quick reads.
+- Use `stream_get_contents("orm://...", "r")` for quick reads.
 - For testing, register the stream wrapper globally in `bootstrap.php` or `index.php`.
 - Extend functionality for formats (e.g. YAML, CSV) via additional `Accept`-style query params.
 
@@ -108,6 +120,7 @@ class User implements JsonSerializable {
 ## See also
 
 - [`EntityManager::streamBy()`](#)
+- [`EntityManager::persist()`](#)
 - [`EntityManager::update()`](#)
 - [`EntityManager::delete()`](#)
 - [PHP Manual: stream_wrapper_register](https://www.php.net/manual/en/function.stream-wrapper-register.php)

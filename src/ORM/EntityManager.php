@@ -336,15 +336,7 @@ class EntityManager
             throw new InvalidArgumentException("Composite primary key requires an associative array of values.");
         }
 
-        [$sql] = $this->buildSelectQuery(
-            $this->databaseDriver->quoteIdentifier($table),
-            $columns,
-            $criteria,
-            [],
-            1,
-            null,
-            $relations
-        );
+        [$sql] = $this->buildSelectQuery($table, $columns, $criteria, [], 1, null, $relations);
 
         LogHelper::query($sql, $values, $this->getLogger());
         $statement = $this->databaseDriver->prepare($sql);
@@ -381,21 +373,7 @@ class EntityManager
     public function findAll(string $entity): array
     {
         [$table, $columns, $relations] = $this->getMetadata($entity);
-        [$sql] = $this->buildSelectQuery(
-            $this->databaseDriver->quoteIdentifier($table),
-            $columns,
-            [],
-            [],
-            null,
-            null,
-            $relations
-        );
-
-//        $sql = sprintf(
-//            "SELECT %s FROM %s",
-//            $this->buildSelectFields($columns, $relations),
-//            $this->databaseDriver->quoteIdentifier($table),
-//        );
+        [$sql] = $this->buildSelectQuery($table, $columns, [], [], null, null, $relations);
 
         LogHelper::query($sql, [], $this->getLogger());
         $statement = $this->getDatabaseDriver()->prepare($sql);
@@ -505,21 +483,7 @@ class EntityManager
     public function streamAll(string $entity): Generator
     {
         [$table, $columns, $relations] = $this->getMetadata($entity);
-        [$sql] = $this->buildSelectQuery(
-            $this->databaseDriver->quoteIdentifier($table),
-            $columns,
-            [],
-            [],
-            null,
-            null,
-            $relations
-        );
-
-//        $sql = sprintf(
-//            "SELECT %s FROM %s",
-//            $this->buildSelectFields($columns, $relations),
-//            $this->databaseDriver->quoteIdentifier($table),
-//        );
+        [$sql] = $this->buildSelectQuery($table, $columns, [], [], null, null, $relations);
 
         LogHelper::query($sql, [], $this->getLogger());
         $statement = $this->getDatabaseDriver()->prepare($sql);
@@ -698,68 +662,72 @@ class EntityManager
      * @see EntityManager::findOneBy()
      * @see EntityManager::streamBy()
      */
-    private function buildSelectQuery(
-        string $table,
-        array $columns,
-        array $criteria,
-        array $orderBy = [],
-        ?int $limit = null,
-        ?int $offset = null,
-        array $relations = [],
-    ): array {
-        $conditions = [];
-        $params = [];
-        $validColumnNames = array_column($columns, 'name');
+private function buildSelectQuery(
+    string $table,
+    array $columns,
+    array $criteria,
+    array $orderBy = [],
+    ?int $limit = null,
+    ?int $offset = null,
+    array $relations = [],
+): array {
+    $params = [];
+    $validColumnNames = array_column($columns, 'name');
+    $tableQuoted = $this->databaseDriver->quoteIdentifier($table);
 
-        // Build WHERE clause based on provided criteria, filtering out unknown columns.
-        foreach ($criteria as $name => $value) {
-            if (!in_array($name, $validColumnNames, true)) {
-                continue;
-            }
-
-            $conditions[] = "{$table}.{$this->databaseDriver->quoteIdentifier($name)} = :{$name}";
-            $params[":{$name}"] = $value;
+    // Build WHERE clause conditions
+    $conditions = [];
+    foreach ($criteria as $name => $value) {
+        if (!in_array($name, $validColumnNames, true)) {
+            continue;
         }
-
-        // Build base SELECT query.
-        $fields = $this->buildSelectFields($columns, $relations);
-        $sql = "SELECT {$fields} FROM {$table}";
-
-        foreach ($relations as $relation) {
-            $joinTable = $this->databaseDriver->quoteIdentifier($relation['table']);
-            $alias = $this->databaseDriver->quoteIdentifier($relation['alias']);
-            $joinColumn = $this->databaseDriver->quoteIdentifier($relation['foreignKey']);
-            $referencedColumn = $this->databaseDriver->quoteIdentifier($relation['referencedColumn']);
-
-            $sql .= " LEFT JOIN {$joinTable} AS {$alias} ON {$table}.{$joinColumn} = {$alias}.{$referencedColumn}";
-        }
-
-        if (!empty($conditions)) {
-            $sql .= " WHERE " . implode(" AND ", $conditions);
-        }
-
-        // Append ORDER BY clause if specified
-        if (!empty($orderBy)) {
-            $orderParts = [];
-            foreach ($orderBy as $field => $direction) {
-                $quotedField = $this->databaseDriver->quoteIdentifier($field);
-                $dir = strtoupper($direction) === "DESC" ? "DESC" : "ASC";
-                $orderParts[] = "{$quotedField} {$dir}";
-            }
-            $sql .= " ORDER BY " . implode(", ", $orderParts);
-        }
-
-        // Add LIMIT and OFFSET clauses if set
-        if ($limit !== null) {
-            $sql .= " LIMIT {$limit}";
-        }
-
-        if ($offset !== null) {
-            $sql .= " OFFSET {$offset}";
-        }
-
-        return [$sql, $params];
+        $conditions[] = "{$tableQuoted}.{$this->databaseDriver->quoteIdentifier($name)} = :{$name}";
+        $params[":{$name}"] = $value;
     }
+
+    // Build SELECT fields
+    $fields = $this->buildSelectFields($columns, $relations);
+
+    // Construct SQL query parts
+    $sqlParts = [];
+    $sqlParts[] = "SELECT {$fields} FROM {$tableQuoted}";
+
+    // Add LEFT JOIN clauses for relations
+    foreach ($relations as $relation) {
+        $joinTable = $this->databaseDriver->quoteIdentifier($relation['table']);
+        $alias = $this->databaseDriver->quoteIdentifier($relation['alias']);
+        $joinColumn = $this->databaseDriver->quoteIdentifier($relation['foreignKey']);
+        $referencedColumn = $this->databaseDriver->quoteIdentifier($relation['referencedColumn']);
+        $sqlParts[] = "LEFT JOIN {$joinTable} AS {$alias} ON {$tableQuoted}.{$joinColumn} = {$alias}.{$referencedColumn}";
+    }
+
+    // Append WHERE clause if conditions exist
+    if (!empty($conditions)) {
+        $sqlParts[] = "WHERE " . implode(" AND ", $conditions);
+    }
+
+    // Build ORDER BY clause using array_map
+    if (!empty($orderBy)) {
+        $orderParts = array_map(function ($field, $direction) {
+            $quotedField = $this->databaseDriver->quoteIdentifier($field);
+            $dir = strtoupper($direction) === "DESC" ? "DESC" : "ASC";
+            return "{$quotedField} {$dir}";
+        }, array_keys($orderBy), $orderBy);
+        $sqlParts[] = "ORDER BY " . implode(", ", $orderParts);
+    }
+
+    // Append LIMIT and OFFSET if provided
+    if ($limit !== null) {
+        $sqlParts[] = "LIMIT {$limit}";
+    }
+    if ($offset !== null) {
+        $sqlParts[] = "OFFSET {$offset}";
+    }
+
+    $sql = implode(" ", $sqlParts);
+
+    return [$sql, $params];
+}
 
     /**
      * Instantiates and populates an entity object from raw database row data.

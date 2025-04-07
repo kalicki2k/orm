@@ -20,26 +20,26 @@ echo "Creating users...\n";
 
 // --- CREATE USERS ---
 
-function generateUsers(int $count = 100): array {
-    $users = [];
-    for ($i = 1; $i <= $count; $i++) {
-        $username = "user{$i}";
-        $email = "{$username}@example.com";
-        $users[] = [
-            'username' => $username,
-            'email'    => $email,
-        ];
-    }
-    return $users;
-}
+//function generateUsers(int $count = 100): array {
+//    $users = [];
+//    for ($i = 1; $i <= $count; $i++) {
+//        $username = "user{$i}";
+//        $email = "{$username}@example.com";
+//        $users[] = [
+//            'username' => $username,
+//            'email'    => $email,
+//        ];
+//    }
+//    return $users;
+//}
 
-$usersToCreate = generateUsers(100);
+//$usersToCreate = generateUsers(100);
 
-$handle = fopen("orm://Entity\\User", "x");
-foreach ($usersToCreate as $user) {
-    fwrite($handle, json_encode($user) . PHP_EOL);
-}
-fclose($handle);
+//$handle = fopen("orm://Entity\\User", "x");
+//foreach ($usersToCreate as $user) {
+//    fwrite($handle, json_encode($user) . PHP_EOL);
+//}
+//fclose($handle);
 
 
 // --- READ ALL USERS ---
@@ -59,44 +59,57 @@ fclose($handle);
 //}
 //fclose($handle);
 
-$handle = fopen("orm://Entity\\User?format=xml", "r");
-$xmlOutput = '';
+//$handle = fopen("orm://Entity\\User?format=xml", "r");
+//$xmlOutput = '';
+//
+//while (!feof($handle)) {
+//    $line = trim(fgets($handle));
+//    if (!empty($line)) {
+//        $xmlOutput .= $line . "\n";
+//    }
+//}
+//fclose($handle);
+//
+//echo "XML Output:\n";
+//echo $xmlOutput;
 
-// Lesen: Zeilenweise wird der Stream gelesen, wobei jede Zeile ein XML-Dokument einer Entität enthält.
+$handle = fopen("orm://Entity\\User?format=csv", "r");
+$output = '';
+
 while (!feof($handle)) {
     $line = trim(fgets($handle));
     if (!empty($line)) {
-        $xmlOutput .= $line . "\n";
+        $output .= $line . "\n";
     }
 }
 fclose($handle);
 
-echo "XML Output:\n";
-echo $xmlOutput;
+echo "CSV Output:\n";
+echo $output;
 
 
 // --- UPDATE FIRST USER ---
-if (!empty($users)) {
-    $firstUser = $users[0];
-    $firstUser['email'] = 'updated@example.com';
-
-    echo "\nUpdating user with ID {$firstUser['id']}...\n";
-
-    $handle = fopen("orm://Entity\\User", "w");
-    fwrite($handle, json_encode($firstUser));
-    fclose($handle);
-
-    echo "Updated user: " . json_encode($firstUser) . PHP_EOL;
-}
+//if (!empty($users)) {
+//    $firstUser = $users[0];
+//    $firstUser['email'] = 'updated@example.com';
+//
+//    echo "\nUpdating user with ID {$firstUser['id']}...\n";
+//
+//    $handle = fopen("orm://Entity\\User", "w");
+//    fwrite($handle, json_encode($firstUser));
+//    fclose($handle);
+//
+//    echo "Updated user: " . json_encode($firstUser) . PHP_EOL;
+//}
 
 
 // --- DELETE SECOND USER ---
-if (isset($users[1])) {
-    $userIdToDelete = $users[1]['id'];
-    echo "\nDeleting user with ID {$userIdToDelete}...\n";
-    unlink("orm://Entity\\User?id={$userIdToDelete}");
-    echo "Deleted user with ID {$userIdToDelete}" . PHP_EOL;
-}
+//if (isset($users[1])) {
+//    $userIdToDelete = $users[1]['id'];
+//    echo "\nDeleting user with ID {$userIdToDelete}...\n";
+//    unlink("orm://Entity\\User?id={$userIdToDelete}");
+//    echo "Deleted user with ID {$userIdToDelete}" . PHP_EOL;
+//}
 
 ### Default
 /*

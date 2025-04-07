@@ -7,6 +7,7 @@ use JsonSerializable;
 use ORM\Drivers\PDODriver;
 use ORM\EntityManager;
 use ORM\Logger\LoggerFactory;
+use ORM\Stream\Format\CSVFormatWriter;
 use ORM\Stream\Format\FormatWriter;
 use ORM\Stream\Format\JsonFormatWriter;
 use ORM\Stream\Format\XmlFormatWriter;
@@ -340,14 +341,13 @@ class StreamWrapper
     /**
      * Factory method to obtain the appropriate FormatWriter instance.
      *
-     * @param string $format The requested format (e.g., "json", "csv", "yaml").
+     * @param string $format The requested format (e.g., "json", "csv", "xml").
      * @return FormatWriter An instance of a FormatWriter for the specified format.
      */
     protected function getFormatWriter(string $format): FormatWriter
     {
         return match (strtolower($format)) {
-            'json' => new JsonFormatWriter(),
-            // 'csv'  => new \ORM\Stream\Format\CsvFormatWriter(),
+            'csv'  => new CsvFormatWriter(),
             'xml'  => new XmlFormatWriter(),
             // 'yaml' => new \ORM\Stream\Format\YamlFormatWriter(),
             default => new JsonFormatWriter(),

@@ -709,7 +709,7 @@ class EntityManager
     ): array {
         $conditions = [];
         $params = [];
-        $validColumnNames = array_column($columns, 'column');
+        $validColumnNames = array_column($columns, 'name');
 
         // Build WHERE clause based on provided criteria, filtering out unknown columns.
         foreach ($criteria as $name => $value) {
@@ -717,8 +717,7 @@ class EntityManager
                 continue;
             }
 
-            $quoted = $this->databaseDriver->quoteIdentifier($name);
-            $conditions[] = "{$quoted} = :{$name}";
+            $conditions[] = "{$table}.{$this->databaseDriver->quoteIdentifier($name)} = :{$name}";
             $params[":{$name}"] = $value;
         }
 

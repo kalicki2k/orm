@@ -14,12 +14,12 @@ $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
 // Register ORM stream wrapper
-stream_wrapper_register("orm", StreamWrapper::class);
-
-echo "Creating users...\n";
-
-// --- CREATE USERS ---
-
+//stream_wrapper_register("orm", StreamWrapper::class);
+//
+//echo "Creating users...\n";
+//
+//// --- CREATE USERS ---
+//
 //function generateUsers(int $count = 100): array {
 //    $users = [];
 //    for ($i = 1; $i <= $count; $i++) {
@@ -32,9 +32,9 @@ echo "Creating users...\n";
 //    }
 //    return $users;
 //}
-
-//$usersToCreate = generateUsers(100);
-
+//
+//$usersToCreate = generateUsers(2);
+//
 //$handle = fopen("orm://Entity\\User", "x");
 //foreach ($usersToCreate as $user) {
 //    fwrite($handle, json_encode($user) . PHP_EOL);
@@ -73,19 +73,19 @@ echo "Creating users...\n";
 //echo "XML Output:\n";
 //echo $xmlOutput;
 
-$handle = fopen("orm://Entity\\User?format=csv", "r");
-$output = '';
-
-while (!feof($handle)) {
-    $line = trim(fgets($handle));
-    if (!empty($line)) {
-        $output .= $line . "\n";
-    }
-}
-fclose($handle);
-
-echo "CSV Output:\n";
-echo $output;
+//$handle = fopen("orm://Entity\\User?format=csv", "r");
+//$output = '';
+//
+//while (!feof($handle)) {
+//    $line = trim(fgets($handle));
+//    if (!empty($line)) {
+//        $output .= $line . "\n";
+//    }
+//}
+//fclose($handle);
+//
+//echo "CSV Output:\n";
+//echo $output;
 
 
 // --- UPDATE FIRST USER ---
@@ -184,3 +184,24 @@ foreach ($entityManager->streamBy(User::class, ['email' => 'test@example.com']) 
     echo "- {$u->id}: {$u->username}" . PHP_EOL;
 }
 */
+
+// Create config and driver
+$driver = PDODriver::default();
+
+// Logger and EntityManager
+$logger = LoggerFactory::create();
+$entityManager = new EntityManager($driver, $logger);
+
+$user = $entityManager->find(User::class, 1);
+var_dump($user);
+
+//$users = $entityManager->findAll(User::class);
+//
+//echo PHP_EOL . "All Users with Profile:" . PHP_EOL;
+//
+//foreach ($users as $user) {
+////    var_dump($user);
+//    $profileInfo = isset($user->profile) ? $user->profile->bio ?? 'no bio' : 'no profile';
+//    echo "- {$user->id}: {$user->username} ({$user->email}) | Profile: {$profileInfo}" . PHP_EOL;
+//}
+

@@ -127,7 +127,7 @@ class UnitOfWork
     {
         foreach ($columns as $property => $column) {
             if (($column["primary"] ?? false) && ($column["autoIncrement"] ?? false)) {
-                $id = $this->entityManager->getDatabaseDriver()->lastInsertId($table, $column["column"]);
+                $id = $this->entityManager->getDatabaseDriver()->lastInsertId($table, $column["name"]);
                 $entity->$property = is_numeric($id) ? (int)$id : $id;
             }
         }
@@ -254,26 +254,26 @@ class UnitOfWork
                 continue;
             }
 
-            $field = $this->entityManager->getDatabaseDriver()->quoteIdentifier($column["column"]);
+            $field = $this->entityManager->getDatabaseDriver()->quoteIdentifier($column["name"]);
             $reflectionProperty = $reflectionClass->getProperty($property);
 
             if (!$reflectionProperty->isInitialized($entity)) {
                 // Handle uninitialized nullable or defaulted properties
                 if (!empty($column["nullable"])) {
                     $fields[] = $field;
-                    $placeholders[] = ":{$column["column"]}";
-                    $values[":{$column["column"]}"] = null;
+                    $placeholders[] = ":{$column["name"]}";
+                    $values[":{$column["name"]}"] = null;
                 } elseif (array_key_exists("default", $column)) {
                     $fields[] = $field;
-                    $placeholders[] = ":{$column["column"]}";
-                    $values[":{$column["column"]}"] = $column["default"];
+                    $placeholders[] = ":{$column["name"]}";
+                    $values[":{$column["name"]}"] = $column["default"];
                 }
                 continue;
             }
 
             $fields[] = $field;
-            $placeholders[] = ":{$column["column"]}";
-            $values[":{$column["column"]}"] = $entity->$property;
+            $placeholders[] = ":{$column["name"]}";
+            $values[":{$column["name"]}"] = $entity->$property;
         }
 
         return [$fields, $placeholders, $values];

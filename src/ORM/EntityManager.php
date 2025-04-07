@@ -9,6 +9,7 @@ use ORM\Drivers\Statement;
 use ORM\Logger\LogHelper;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
+use ReflectionProperty;
 use RuntimeException;
 
 /**
@@ -129,9 +130,9 @@ class EntityManager
      */
     public function getPrimaryKeyColumn(array $columns): ?string
     {
-        foreach ($columns as $col) {
-            if (!empty($col['primary'])) {
-                return $col['column'];
+        foreach ($columns as $column) {
+            if (!empty($column["primary"])) {
+                return $column["alias"];
             }
         }
         return null;
@@ -304,23 +305,25 @@ class EntityManager
      */
     public function find(string $entity, int|string|array $id): ?object
     {
-        [$table, $columns] = $this->getMetadata($entity);
+        [$table, $columns, $relations] = $this->getMetadata($entity);
         $primaryConditions = [];
         $values = [];
+        $criteria = [];
 
         foreach ($columns as $column) {
             if ($column["primary"]) {
-                $columnName = $column["column"];
-                $quoted = $this->databaseDriver->quoteIdentifier($columnName);
-                $primaryConditions[] = "{$quoted} = :{$columnName}";
+                $name = $column["name"];
+                $criteria[$name] = is_array($id) ? $id[$name] : $id;
+                $quoted = $this->databaseDriver->quoteIdentifier($name);
+                $primaryConditions[] = "{$quoted} = :{$name}";
 
                 if (is_array($id)) {
-                    if (!array_key_exists($columnName, $id)) {
-                        throw new InvalidArgumentException("Missing value for composite key part: '{$columnName}'");
+                    if (!array_key_exists($name, $id)) {
+                        throw new InvalidArgumentException("Missing value for composite key part: '{$name}'");
                     }
-                    $values[":{$columnName}"] = $id[$columnName];
+                    $values[":{$name}"] = $id[$name];
                 } else {
-                    $values[":{$columnName}"] = $id;
+                    $values[":{$name}"] = $id;
                 }
             }
         }
@@ -333,11 +336,14 @@ class EntityManager
             throw new InvalidArgumentException("Composite primary key requires an associative array of values.");
         }
 
-        $sql = sprintf(
-            "SELECT %s FROM %s WHERE %s",
-            $this->buildSelectFields($columns),
+        [$sql] = $this->buildSelectQuery(
             $this->databaseDriver->quoteIdentifier($table),
-            implode(" AND ", $primaryConditions),
+            $columns,
+            $criteria,
+            [],
+            1,
+            null,
+            $relations
         );
 
         LogHelper::query($sql, $values, $this->getLogger());
@@ -374,13 +380,22 @@ class EntityManager
      */
     public function findAll(string $entity): array
     {
-        [$table, $columns] = $this->getMetadata($entity);
-
-        $sql = sprintf(
-            "SELECT %s FROM %s",
-            $this->buildSelectFields($columns),
+        [$table, $columns, $relations] = $this->getMetadata($entity);
+        [$sql] = $this->buildSelectQuery(
             $this->databaseDriver->quoteIdentifier($table),
+            $columns,
+            [],
+            [],
+            null,
+            null,
+            $relations
         );
+
+//        $sql = sprintf(
+//            "SELECT %s FROM %s",
+//            $this->buildSelectFields($columns, $relations),
+//            $this->databaseDriver->quoteIdentifier($table),
+//        );
 
         LogHelper::query($sql, [], $this->getLogger());
         $statement = $this->getDatabaseDriver()->prepare($sql);
@@ -424,8 +439,8 @@ class EntityManager
         ?int $limit = null,
         ?int $offset = null,
     ): array {
-        [$table, $columns] = $this->getMetadata($entity);
-        [$sql, $values] = $this->buildSelectQuery($table, $columns, $criteria, $orderBy, $limit, $offset);
+        [$table, $columns, $relations] = $this->getMetadata($entity);
+        [$sql, $values] = $this->buildSelectQuery($table, $columns, $criteria, $orderBy, $limit, $offset, $relations);
 
         LogHelper::query($sql, $values, $this->getLogger());
         $statement = $this->databaseDriver->prepare($sql);
@@ -489,13 +504,22 @@ class EntityManager
      */
     public function streamAll(string $entity): Generator
     {
-        [$table, $columns] = $this->getMetadata($entity);
-
-        $sql = sprintf(
-            "SELECT %s FROM %s",
-            $this->buildSelectFields($columns),
+        [$table, $columns, $relations] = $this->getMetadata($entity);
+        [$sql] = $this->buildSelectQuery(
             $this->databaseDriver->quoteIdentifier($table),
+            $columns,
+            [],
+            [],
+            null,
+            null,
+            $relations
         );
+
+//        $sql = sprintf(
+//            "SELECT %s FROM %s",
+//            $this->buildSelectFields($columns, $relations),
+//            $this->databaseDriver->quoteIdentifier($table),
+//        );
 
         LogHelper::query($sql, [], $this->getLogger());
         $statement = $this->getDatabaseDriver()->prepare($sql);
@@ -540,8 +564,8 @@ class EntityManager
         ?int $limit = null,
         ?int $offset = null
     ): Generator {
-        [$table, $columns] = $this->getMetadata($entity);
-        [$sql, $values] = $this->buildSelectQuery($table, $columns, $criteria, $orderBy, $limit, $offset);
+        [$table, $columns, $relations] = $this->getMetadata($entity);
+        [$sql, $values] = $this->buildSelectQuery($table, $columns, $criteria, $orderBy, $limit, $offset, $relations);
 
         LogHelper::query($sql, [], $this->getLogger());
         $statement = $this->getDatabaseDriver()->prepare($sql);
@@ -591,6 +615,8 @@ class EntityManager
      *
      * @return string A comma-separated string of quoted column names (e.g., "`id`, `username`, `email`").
      *
+     * @throws ReflectionException
+     *
      * @example
      * // Given metadata for columns:
      * // [
@@ -600,12 +626,32 @@ class EntityManager
      * //
      * // Result: "`id`, `username`"
      */
-    private function buildSelectFields(array $columns): string
+    private function buildSelectFields(array $columns, array $relations = []): string
     {
         $fields = [];
 
+        // Main entity fields
         foreach ($columns as $column) {
-            $fields[] = $this->databaseDriver->quoteIdentifier($column["column"]);
+            $fields[] = sprintf(
+                "%s.%s AS %s",
+                $this->databaseDriver->quoteIdentifier($column["table"]),
+                $this->databaseDriver->quoteIdentifier($column["name"]),
+                $this->databaseDriver->quoteIdentifier($column["alias"]),
+            );
+        }
+
+        // Related entity fields
+        foreach ($relations as $relation) {
+            [$_, $relatedColumns] = $this->getMetadata($relation['entity']);
+
+            foreach ($relatedColumns as $relatedColumn) {
+                $fields[] = sprintf(
+                    "%s.%s AS %s",
+                    $this->databaseDriver->quoteIdentifier($relation['alias']),
+                    $this->databaseDriver->quoteIdentifier($relatedColumn['name']),
+                    $this->databaseDriver->quoteIdentifier("{$relation['alias']}__{$relatedColumn['name']}"),
+                );
+            }
         }
 
         return implode(", ", array_unique($fields));
@@ -626,10 +672,12 @@ class EntityManager
      * @param array $orderBy Optional. Associative array of column => direction (ASC or DESC).
      * @param int|null $limit Optional. Maximum number of rows to return.
      * @param int|null $offset Optional. Number of rows to skip (useful for pagination).
+     * @param array $relations
      *
      * @return array{0: string, 1: array} An array with the SQL string and the bound parameter values.
      *
      * @throws InvalidArgumentException If no WHERE conditions are provided (empty $criteria).
+     * @throws ReflectionException
      *
      * @example
      * [$sql, $params] = $this->buildSelectQuery(
@@ -657,6 +705,7 @@ class EntityManager
         array $orderBy = [],
         ?int $limit = null,
         ?int $offset = null,
+        array $relations = [],
     ): array {
         $conditions = [];
         $params = [];
@@ -674,8 +723,18 @@ class EntityManager
         }
 
         // Build base SELECT query.
-        $fields = $this->buildSelectFields($columns);
+        $fields = $this->buildSelectFields($columns, $relations);
         $sql = "SELECT {$fields} FROM {$table}";
+
+        foreach ($relations as $relation) {
+            $joinTable = $this->databaseDriver->quoteIdentifier($relation['table']);
+            $alias = $this->databaseDriver->quoteIdentifier($relation['alias']);
+            $joinColumn = $this->databaseDriver->quoteIdentifier($relation['foreignKey']);
+            $referencedColumn = $this->databaseDriver->quoteIdentifier($relation['referencedColumn']);
+
+            $sql .= " LEFT JOIN {$joinTable} AS {$alias} ON {$table}.{$joinColumn} = {$alias}.{$referencedColumn}";
+        }
+
         if (!empty($conditions)) {
             $sql .= " WHERE " . implode(" AND ", $conditions);
         }
@@ -716,13 +775,15 @@ class EntityManager
      *
      * @return object The hydrated (populated) entity instance.
      *
+     * @throws ReflectionException
+     *
+     * @see UnitOfWork::getFormIdentityMap()
+     * @see UnitOfWork::storeInIdentityMap()
      * @example
      * $row = ['id' => 42, 'username' => 'john', 'email' => 'john@example.com'];
      * user = $this->hydrateEntity(User::class, $columns, $row);
      * echo $user->username; // john
      *
-     * @see UnitOfWork::getFormIdentityMap()
-     * @see UnitOfWork::storeInIdentityMap()
      */
     private function hydrateEntity(string $entity, array $columns, array $data): object
     {
@@ -730,6 +791,7 @@ class EntityManager
         $existingEntity = $this->unitOfWork->getFormIdentityMap($entity, $primaryKeyId);
 
         if ($existingEntity !== null) {
+//            $this->hydrateRelations($entity, $existingEntity, $data);
             return $existingEntity; // Reuse cached instance
         }
 
@@ -744,11 +806,42 @@ class EntityManager
 
         // Assign database values to entity properties
         foreach ($columns as $property => $column) {
-            if (isset($data[$column["column"]])) {
-                $entityInstance->$property = $data[$column["column"]];
+            if (isset($data[$column["alias"]])) {
+                $entityInstance->$property = $data[$column["alias"]];
             }
         }
 
+        $this->hydrateRelations($entity, $entityInstance, $data);
+
         return $entityInstance;
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function hydrateRelations(string $entity, object $entityInstance, array $data): void
+    {
+        [$_, $_, $relations] = $this->getMetadata($entity);
+
+        foreach ($relations as $property => $relation) {
+            if ($relation["type"] === "OneToOne") {
+                $relatedEntityClass = new ReflectionProperty($entity, $property)->getType()?->getName();
+                if (!$relatedEntityClass) {
+                    continue;
+                }
+
+                [$_, $relatedColumns] = $this->getMetadata($relatedEntityClass);
+                $relatedInstance = new $relatedEntityClass();
+
+                foreach ($relatedColumns as $relatedProperty => $relatedColumn) {
+                    $alias = "{$relation['alias']}__{$relatedColumn['name']}";
+                    if (isset($data[$alias])) {
+                        $relatedInstance->$relatedProperty = $data[$alias];
+                    }
+                }
+
+                $entityInstance->$property = $relatedInstance;
+            }
+        }
     }
 }

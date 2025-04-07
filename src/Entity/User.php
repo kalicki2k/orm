@@ -23,7 +23,7 @@ class User implements JsonSerializable
     public string $email;
 
     #[OneToOne(entity: Profile::class)]
-    #[JoinColumn(name: "profile_id", referencedColumn: "id")]
+    #[JoinColumn(name: "user_id", referencedColumn: "id")]
     public Profile $profile;
 
     public function jsonSerialize(): mixed

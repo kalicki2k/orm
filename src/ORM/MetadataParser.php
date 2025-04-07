@@ -47,13 +47,9 @@ class MetadataParser
 
         // Loop through all properties and collect column definitions
         foreach ($reflectionClass->getProperties() as $property) {
-            var_dump($property);
-
-            self::parseColumn($property, $columns);
+            self::parseColumn($table->name, $property, $columns);
             self::parseRelation($property, $relations);
         }
-
-        var_dump($relations);
 
         return [
             $table->name, // Name of the table
@@ -69,7 +65,7 @@ class MetadataParser
      * @param array $columns Reference to the result array to populate
      * @return void
      */
-    private static function parseColumn(ReflectionProperty $property, array &$columns): void
+    private static function parseColumn(string $table, ReflectionProperty $property, array &$columns): void
     {
         // Get all #[Column] and #[PrimaryGeneratedColumn] attributes on the property
         $attributes = array_merge(
@@ -84,13 +80,15 @@ class MetadataParser
         /** @var Column $column */
         $column = $attributes[0]->newInstance();
         $columns[$property->getName()] = [
-            "column"        => $column->name,
-            "type"          => $column->type,
-            "length"        => $column->length,
-            "primary"       => $column->primary,
+            "table" => $table,
+            "name" => $column->name,
+            "alias" => "{$table}__{$column->name}",
+            "type" => $column->type,
+            "length" => $column->length,
+            "primary" => $column->primary,
             "autoIncrement" => $column->autoIncrement,
-            "nullable"      => $column->nullable,
-            "default"       => $column->default,
+            "nullable" => $column->nullable,
+            "default" => $column->default,
         ];
 
         // Add generation strategy if PrimaryGeneratedColumn
@@ -102,7 +100,10 @@ class MetadataParser
     /**
      * @param ReflectionProperty $property
      * @param array $relations
+     *
      * @return void
+     *
+     * @throws ReflectionException
      */
     private static function parseRelation(ReflectionProperty $property, array &$relations): void
     {
@@ -112,12 +113,16 @@ class MetadataParser
         if (!empty($oneToOneAttribute) && !empty($joinColumnAttribute)) {
             $relation = $oneToOneAttribute[0]->newInstance();
             $join = $joinColumnAttribute[0]->newInstance();
+            $propertyName = $property->getName();
+            [$table] = MetadataParser::parse(new ($relation->entity)());
 
-            $relations[$property->getName()] = [
+            $relations[$propertyName] = [
                 "type" => "OneToOne",
                 "entity" => $relation->entity,
-                "foreignKey" => "$join->name",
-                "referencedColumn" => $join->referencedColumn,
+                "table" => $table,
+                "foreignKey" => $join->referencedColumn,
+                "referencedColumn" => $join->name,
+                "alias" => strtolower($table . '__' . $propertyName),
             ];
         }
     }

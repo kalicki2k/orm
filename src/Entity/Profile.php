@@ -17,4 +17,8 @@ class Profile
 
     #[Column(name: "birthday", type: "date")]
     public string $birthday;
+
+//    #[OneToOne(entity: User::class)]
+//    #[JoinColumn(name: "user_id", referencedColumn: "id")]
+//    public User $user;
 }

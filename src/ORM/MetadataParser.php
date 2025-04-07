@@ -3,6 +3,8 @@
 namespace ORM;
 
 use ORM\Attributes\Column;
+use ORM\Attributes\JoinColumn;
+use ORM\Attributes\OneToOne;
 use ORM\Attributes\PrimaryGeneratedColumn;
 use ORM\Attributes\Table;
 use ORM\Util\ReflectionCache;
@@ -41,15 +43,22 @@ class MetadataParser
         /** @var Table $table */
         $table = $attributes[0]->newInstance();
         $columns = [];
+        $relations = [];
 
         // Loop through all properties and collect column definitions
         foreach ($reflectionClass->getProperties() as $property) {
+            var_dump($property);
+
             self::parseColumn($property, $columns);
+            self::parseRelation($property, $relations);
         }
 
+        var_dump($relations);
+
         return [
-            $table->name, // Table name
+            $table->name, // Name of the table
             $columns, // Array of columns metadata indexed by property name
+            $relations, // Array containing relation types and their target data
         ];
     }
 
@@ -87,6 +96,29 @@ class MetadataParser
         // Add generation strategy if PrimaryGeneratedColumn
         if ($column instanceof PrimaryGeneratedColumn) {
             $columns[$property->getName()]["strategy"] = $column->type === "uuid" ? "uuid" : "auto";
+        }
+    }
+
+    /**
+     * @param ReflectionProperty $property
+     * @param array $relations
+     * @return void
+     */
+    private static function parseRelation(ReflectionProperty $property, array &$relations): void
+    {
+        $oneToOneAttribute = $property->getAttributes(OneToOne::class);
+        $joinColumnAttribute = $property->getAttributes(JoinColumn::class);
+
+        if (!empty($oneToOneAttribute) && !empty($joinColumnAttribute)) {
+            $relation = $oneToOneAttribute[0]->newInstance();
+            $join = $joinColumnAttribute[0]->newInstance();
+
+            $relations[$property->getName()] = [
+                "type" => "OneToOne",
+                "entity" => $relation->entity,
+                "foreignKey" => "$join->name",
+                "referencedColumn" => $join->referencedColumn,
+            ];
         }
     }
 }

@@ -30,11 +30,11 @@ class PrimaryGeneratedColumn extends Column
      * @param mixed $default Optional default value.
      */
     public function __construct(
-        string $name,
-        string $type = 'int',
-        ?int $length = null,
-        bool $nullable = false,
-        mixed $default = null,
+        public string $name,
+        public string $type = 'int',
+        public ?int $length = null,
+        public bool $nullable = false,
+        public mixed $default = null,
     ) {
         $autoIncrement = ($type === 'int' || $type === 'bigint');
 

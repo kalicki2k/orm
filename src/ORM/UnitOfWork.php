@@ -3,8 +3,8 @@
 namespace ORM;
 
 use ORM\Logger\LogHelper;
+use ORM\Util\ReflectionCache;
 use Ramsey\Uuid\Uuid;
-use ReflectionClass;
 use ReflectionException;
 
 /**
@@ -241,7 +241,7 @@ class UnitOfWork
      */
     private function buildInsertParts(object $entity, array $columns): array
     {
-        $reflectionClass = new ReflectionClass($entity);
+        $reflectionClass = ReflectionCache::get($entity);
 
         $fields = [];
         $placeholders = [];

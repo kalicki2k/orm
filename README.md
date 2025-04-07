@@ -29,7 +29,7 @@ Make sure your `.env` file includes:
 DB_DSN=mysql:host=localhost;dbname=orm
 DB_USER=root
 DB_PASSWORD=secret
-ENV=dev
+APP_ENV=dev
 ```
 
 ---
@@ -45,6 +45,29 @@ use ORM\Logger\LoggerFactory;
 
 $driver = PDODriver::fromEnv();
 $entityManager = new EntityManager($driver, LoggerFactory::create());
+```
+
+### Example Entity
+
+```php
+#[Table(name: "users")]
+class User implements JsonSerializable {
+    #[Column(name: "id", type: "int", primary: true, autoIncrement: true)]
+    public int $id;
+
+    #[Column(name: "username", type: "string")]
+    public string $username;
+    
+    #[Column(name: "email", type: "string")]
+    public string $email;
+
+    public function jsonSerialize(): array {
+        return [
+            'id' => $this->id,
+            'email' => $this->email,
+        ];
+    }
+}
 ```
 
 ### Insert

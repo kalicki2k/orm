@@ -8,6 +8,7 @@ use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\PrimaryGeneratedColumn;
 use ORM\Attributes\Table;
+use ORM\Proxy\LazyEntityProxy;
 
 #[Table(name: "users")]
 class User implements JsonSerializable
@@ -23,8 +24,8 @@ class User implements JsonSerializable
     public string $email;
 
     // Inverse side: User use mappedBy "user" from Entity\Profile
-    #[OneToOne(entity: Profile::class, mappedBy: "user")]
-    public Profile $profile;
+    #[OneToOne(entity: Profile::class, mappedBy: "user", cascade: ["persist", "remove"], fetch: "EAGER")]
+    public Profile|LazyEntityProxy $profile;
 
     public function jsonSerialize(): mixed
     {

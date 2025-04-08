@@ -186,16 +186,16 @@ foreach ($entityManager->streamBy(User::class, ['email' => 'test@example.com']) 
 }
 */
 
-// Create config and driver
-$driver = PDODriver::default();
-
-// Logger and EntityManager
-$logger = LoggerFactory::create();
-$entityManager = new EntityManager($driver, $logger);
-
-$user = $entityManager->find(Profile::class, 1);
-var_dump($user);
-var_dump($user);
+//// Create config and driver
+//$driver = PDODriver::default();
+//
+//// Logger and EntityManager
+//$logger = LoggerFactory::create();
+//$entityManager = new EntityManager($driver, $logger);
+//
+//$user = $entityManager->find(User::class, 1);
+//var_dump($user);
+//var_dump($user);
 
 //$users = $entityManager->findAll(User::class);
 //
@@ -207,3 +207,91 @@ var_dump($user);
 //    echo "- {$user->id}: {$user->username} ({$user->email}) | Profile: {$profileInfo}" . PHP_EOL;
 //}
 
+// Setup database driver and EntityManager
+//$driver = PDODriver::default();
+//$logger = LoggerFactory::create();
+//$entityManager = new EntityManager($driver, $logger);
+//
+//// === Cascade Persist Example ===
+//echo "=== Cascade Persist Example ===\n";
+//
+//// Create a new User
+//$user = new User();
+//$user->username = "CascadeUser";
+//$user->email = "cascade@example.com";
+//
+//// Create a new Profile
+//$profile = new Profile();
+//$profile->bio = "Hello, I'm Cascade!";
+//$profile->birthday = "1990-01-01";
+//
+//// Set the bidirectional relation.
+//// Important: In einer OneToOne-Beziehung (Owning Side ist Profile) wird der Fremdschlüssel in Profile abgelegt.
+//// Daher wird die Beziehung folgendermaßen gesetzt:
+//$profile->user = $user;  // Owning side: Profile besitzt den Fremdschlüssel (user_id)
+//$user->profile = $profile; // Inverse side: User verweist auf das Profile
+//
+//// Persistiere den User – Cascade persist sorgt dafür, dass auch das zugehörige Profile gespeichert wird.
+//$entityManager->persist($user);
+//$entityManager->flush();
+//
+//echo "Inserted User with ID: {$user->id} and associated Profile with ID: {$profile->id}\n";
+//
+//// === Cascade Remove Example ===
+//echo "\n=== Cascade Remove Example ===\n";
+//
+//// Lösche den User – Cascade remove sollte auch das verknüpfte Profile entfernen.
+//$entityManager->delete($user);
+//$entityManager->flush();
+//
+//echo "Deleted User with ID: {$user->id} and cascaded deletion to Profile.\n";
+
+// Setup database driver and EntityManager
+$driver = PDODriver::default();
+$logger = LoggerFactory::create();
+$entityManager = new EntityManager($driver, $logger);
+
+// --- CREATE / CASCADE PERSIST (with Lazy Loading) ---
+// Erstelle einen neuen User und ein zugehöriges Profile
+$user = new User();
+$user->username = "LazyUser";
+$user->email = "lazy@example.com";
+
+$profile = new Profile();
+$profile->bio = "I load lazily";
+$profile->birthday = "1985-05-15";
+
+// Set bidirectional relation
+// Hinweis: Da Profile als Owning Side definiert ist (mit JoinColumn),
+// muss Profile->user gesetzt werden. Der User verweist in der OneToOne-Definition
+// auf das zugehörige Profile (fetch: "LAZY").
+$profile->user = $user;
+$user->profile = $profile;
+
+// Persistiere den User – Cascade persist sorgt dafür, dass auch das Profile gespeichert wird.
+$entityManager->persist($user);
+$entityManager->flush();
+
+echo "Inserted User with ID: {$user->id}\n";
+
+// --- RETRIEVE / LAZY LOADING TEST ---
+// Finde den User
+$foundUser = $entityManager->find(User::class, $user->id);
+
+echo "Found User:\n";
+echo "ID: {$foundUser->id}\n";
+echo "Username: {$foundUser->username}\n";
+
+// Beim Zugriff sollte der Lazy-Proxy aktiv werden, wenn fetch == "LAZY"
+// Hier prüfen wir zunächst, ob profile noch ein Proxy ist:
+echo "User's profile (raw):\n";
+var_dump($foundUser->profile); // Erwartung: Instanz von LazyEntityProxy
+
+// Jetzt greifen wir auf eine Eigenschaft zu, was den Proxy initialisieren sollte:
+echo "Profile Bio (trigger lazy load): " . $foundUser->profile->bio . "\n";
+
+// Optional: Zeige die geladene, "echte" Entität an:
+if (method_exists($foundUser->profile, 'getWrappedEntity')) {
+    echo "Lazy proxy now wraps:\n";
+    var_dump($foundUser->profile->getWrappedEntity());
+}

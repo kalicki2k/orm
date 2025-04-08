@@ -4,10 +4,14 @@ namespace ORM;
 
 use Generator;
 use InvalidArgumentException;
+use ORM\Attributes\OneToOne;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
 use ORM\Logger\LogHelper;
+use ORM\Proxy\LazyEntityProxy;
+use ORM\Util\ReflectionCache;
 use Psr\Log\LoggerInterface;
+use ReflectionClass;
 use ReflectionException;
 use ReflectionProperty;
 use RuntimeException;
@@ -151,6 +155,7 @@ class EntityManager
      * @param object|array $entity A single entity instance or an array of entity instances
      *
      * @throws InvalidArgumentException If the input is not an object or an array of objects
+     * @throws ReflectionException
      *
      * @example
      * $user = new User();
@@ -174,6 +179,7 @@ class EntityManager
         }
 
         $this->unitOfWork->scheduleInsert($entity);
+        $this->cascadeOperation($entity, "persist");
     }
 
     /**
@@ -228,6 +234,7 @@ class EntityManager
      * @param object|array $entity A single entity or an array of entities to be deleted
      *
      * @throws InvalidArgumentException If the argument is not an object or an array of objects
+     * @throws ReflectionException
      *
      * @example
      * // Delete a single user
@@ -254,6 +261,7 @@ class EntityManager
         }
 
         $this->unitOfWork->scheduleDelete($entity);
+        $this->cascadeOperation($entity, "remove");
     }
 
     /**
@@ -662,72 +670,97 @@ class EntityManager
      * @see EntityManager::findOneBy()
      * @see EntityManager::streamBy()
      */
-private function buildSelectQuery(
-    string $table,
-    array $columns,
-    array $criteria,
-    array $orderBy = [],
-    ?int $limit = null,
-    ?int $offset = null,
-    array $relations = [],
-): array {
-    $params = [];
-    $validColumnNames = array_column($columns, 'name');
-    $tableQuoted = $this->databaseDriver->quoteIdentifier($table);
+    private function buildSelectQuery(
+        string $table,
+        array $columns,
+        array $criteria,
+        array $orderBy = [],
+        ?int $limit = null,
+        ?int $offset = null,
+        array $relations = [],
+    ): array {
+        $params = [];
+        $validColumnNames = array_column($columns, 'name');
+        $tableQuoted = $this->databaseDriver->quoteIdentifier($table);
 
-    // Build WHERE clause conditions
-    $conditions = [];
-    foreach ($criteria as $name => $value) {
-        if (!in_array($name, $validColumnNames, true)) {
-            continue;
+        $conditions = [];
+        foreach ($criteria as $name => $value) {
+            if (!in_array($name, $validColumnNames, true)) {
+                continue;
+            }
+            $conditions[] = "{$tableQuoted}.{$this->databaseDriver->quoteIdentifier($name)} = :{$name}";
+            $params[":{$name}"] = $value;
         }
-        $conditions[] = "{$tableQuoted}.{$this->databaseDriver->quoteIdentifier($name)} = :{$name}";
-        $params[":{$name}"] = $value;
+
+        $fields = $this->buildSelectFields($columns, $relations);
+
+        $sqlParts = [];
+        $sqlParts[] = "SELECT {$fields} FROM {$tableQuoted}";
+
+        foreach ($relations as $relation) {
+            $joinTable = $this->databaseDriver->quoteIdentifier($relation['table']);
+            $alias = $this->databaseDriver->quoteIdentifier($relation['alias']);
+            if (isset($relation['inverse']) && $relation['inverse'] === true) {
+                $sqlParts[] = "LEFT JOIN {$joinTable} AS {$alias} ON {$tableQuoted}.{$this->databaseDriver->quoteIdentifier($relation['referencedColumn'])} = {$alias}.{$this->databaseDriver->quoteIdentifier($relation['foreignKey'])}";
+            } else {
+                $sqlParts[] = "LEFT JOIN {$joinTable} AS {$alias} ON {$tableQuoted}.{$this->databaseDriver->quoteIdentifier($relation['foreignKey'])} = {$alias}.{$this->databaseDriver->quoteIdentifier($relation['referencedColumn'])}";
+            }
+        }
+
+        if (!empty($conditions)) {
+            $sqlParts[] = "WHERE " . implode(" AND ", $conditions);
+        }
+
+        if (!empty($orderBy)) {
+            $orderParts = array_map(function ($field, $direction) {
+                $quotedField = $this->databaseDriver->quoteIdentifier($field);
+                $dir = strtoupper($direction) === "DESC" ? "DESC" : "ASC";
+                return "{$quotedField} {$dir}";
+            }, array_keys($orderBy), $orderBy);
+            $sqlParts[] = "ORDER BY " . implode(", ", $orderParts);
+        }
+
+        if ($limit !== null) {
+            $sqlParts[] = "LIMIT {$limit}";
+        }
+        if ($offset !== null) {
+            $sqlParts[] = "OFFSET {$offset}";
+        }
+
+        $sql = implode(" ", $sqlParts);
+
+        return [$sql, $params];
     }
 
-    // Build SELECT fields
-    $fields = $this->buildSelectFields($columns, $relations);
+    /**
+     * @throws ReflectionException
+     */
+    private function cascadeOperation(object $entity, string $operation): void
+    {
+        [$_, $_, $relations] = $this->getMetadata($entity);
+        $reflection = new ReflectionClass($entity);
 
-    // Construct SQL query parts
-    $sqlParts = [];
-    $sqlParts[] = "SELECT {$fields} FROM {$tableQuoted}";
+        foreach ($relations as $propertyName => $relation) {
+            $prop = $reflection->getProperty($propertyName);
+            $oneToOneAttrs = $prop->getAttributes(OneToOne::class);
+            if (empty($oneToOneAttrs)) {
+                continue;
+            }
+            /** @var OneToOne $oneToOne */
+            $oneToOne = $oneToOneAttrs[0]->newInstance();
 
-    // Add LEFT JOIN clauses for relations
-    foreach ($relations as $relation) {
-        $joinTable = $this->databaseDriver->quoteIdentifier($relation['table']);
-        $alias = $this->databaseDriver->quoteIdentifier($relation['alias']);
-        $joinColumn = $this->databaseDriver->quoteIdentifier($relation['foreignKey']);
-        $referencedColumn = $this->databaseDriver->quoteIdentifier($relation['referencedColumn']);
-        $sqlParts[] = "LEFT JOIN {$joinTable} AS {$alias} ON {$tableQuoted}.{$joinColumn} = {$alias}.{$referencedColumn}";
+            if (
+                in_array($operation, $oneToOne->cascade, true) &&
+                isset($entity->$propertyName) &&
+                is_object($entity->$propertyName)
+            ) {
+                match ($operation) {
+                    'persist' => $this->persist($entity->$propertyName),
+                    'remove' => $this->delete($entity->$propertyName),
+                };
+            }
+        }
     }
-
-    // Append WHERE clause if conditions exist
-    if (!empty($conditions)) {
-        $sqlParts[] = "WHERE " . implode(" AND ", $conditions);
-    }
-
-    // Build ORDER BY clause using array_map
-    if (!empty($orderBy)) {
-        $orderParts = array_map(function ($field, $direction) {
-            $quotedField = $this->databaseDriver->quoteIdentifier($field);
-            $dir = strtoupper($direction) === "DESC" ? "DESC" : "ASC";
-            return "{$quotedField} {$dir}";
-        }, array_keys($orderBy), $orderBy);
-        $sqlParts[] = "ORDER BY " . implode(", ", $orderParts);
-    }
-
-    // Append LIMIT and OFFSET if provided
-    if ($limit !== null) {
-        $sqlParts[] = "LIMIT {$limit}";
-    }
-    if ($offset !== null) {
-        $sqlParts[] = "OFFSET {$offset}";
-    }
-
-    $sql = implode(" ", $sqlParts);
-
-    return [$sql, $params];
-}
 
     /**
      * Instantiates and populates an entity object from raw database row data.
@@ -758,7 +791,6 @@ private function buildSelectQuery(
         $existingEntity = $this->unitOfWork->getFormIdentityMap($entity, $primaryKeyId);
 
         if ($existingEntity !== null) {
-//            $this->hydrateRelations($entity, $existingEntity, $data);
             return $existingEntity; // Reuse cached instance
         }
 
@@ -784,6 +816,29 @@ private function buildSelectQuery(
     }
 
     /**
+     * Hydrates a related entity based on the given relation metadata and raw database row data.
+     *
+     * @param array $relation The relation metadata array.
+     * @param array $data The raw database row data.
+     * @return object The hydrated related entity.
+     * @throws ReflectionException
+     */
+    private function hydrateRelatedEntity(array $relation, array $data): object
+    {
+        [$_, $relatedColumns] = $this->getMetadata($relation["entity"]);
+        $relatedInstance = new $relation["entity"]();
+
+        foreach ($relatedColumns as $relatedProperty => $relatedColumn) {
+            $alias = "{$relation['alias']}__{$relatedColumn['name']}";
+            if (isset($data[$alias])) {
+                $relatedInstance->$relatedProperty = $data[$alias];
+            }
+        }
+        return $relatedInstance;
+    }
+
+
+    /**
      * @throws ReflectionException
      */
     private function hydrateRelations(string $entity, object $entityInstance, array $data): void
@@ -792,22 +847,21 @@ private function buildSelectQuery(
 
         foreach ($relations as $property => $relation) {
             if ($relation["type"] === "OneToOne") {
-                $relatedEntityClass = new ReflectionProperty($entity, $property)->getType()?->getName();
-                if (!$relatedEntityClass) {
+                $reflectionProperty = new ReflectionProperty($entity, $property);
+                $oneToOneAttrs = $reflectionProperty->getAttributes(OneToOne::class);
+                if (!$oneToOneAttrs) {
                     continue;
                 }
+                /** @var OneToOne $oneToOne */
+                $oneToOne = $oneToOneAttrs[0]->newInstance();
 
-                [$_, $relatedColumns] = $this->getMetadata($relatedEntityClass);
-                $relatedInstance = new $relatedEntityClass();
-
-                foreach ($relatedColumns as $relatedProperty => $relatedColumn) {
-                    $alias = "{$relation['alias']}__{$relatedColumn['name']}";
-                    if (isset($data[$alias])) {
-                        $relatedInstance->$relatedProperty = $data[$alias];
-                    }
+                if ($oneToOne->fetch === "LAZY") {
+                    $entityInstance->$property = new LazyEntityProxy(function () use ($relation, $data) {
+                        return $this->hydrateRelatedEntity($relation, $data);
+                    });
+                } else {
+                    $entityInstance->$property = $this->hydrateRelatedEntity($relation, $data);
                 }
-
-                $entityInstance->$property = $relatedInstance;
             }
         }
     }

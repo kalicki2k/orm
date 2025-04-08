@@ -212,7 +212,7 @@ class UnitOfWork
 
         foreach ($columns as $property => $column) {
             if ($column['primary']) {
-                $columnName = $column['column'];
+                $columnName = $column['name'];
                 $quoted = $this->entityManager->getDatabaseDriver()->quoteIdentifier($columnName);
                 $conditions[] = "{$quoted} = :{$columnName}";
                 $values[":{$columnName}"] = $entity->$property;

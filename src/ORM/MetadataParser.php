@@ -30,10 +30,7 @@ class MetadataParser
      */
     public static function parse(object $entity): array
     {
-        // Efficiently retrieve cached ReflectionClass instance for the entity
         $reflectionClass = ReflectionCache::get($entity);
-
-        // Retrieve the #[Table] attribute from the class (required for ORM mapping)
         $attributes = $reflectionClass->getAttributes(Table::class);
 
         if (empty($attributes)) {
@@ -45,16 +42,15 @@ class MetadataParser
         $columns = [];
         $relations = [];
 
-        // Loop through all properties and collect column definitions
         foreach ($reflectionClass->getProperties() as $property) {
             self::parseColumn($table->name, $property, $columns);
             self::parseRelation($property, $relations);
         }
 
         return [
-            $table->name, // Name of the table
-            $columns, // Array of columns metadata indexed by property name
-            $relations, // Array containing relation types and their target data
+            $table->name,
+            $columns,
+            $relations,
         ];
     }
 
@@ -109,25 +105,55 @@ class MetadataParser
      */
     private static function parseRelation(ReflectionProperty $property, array &$relations): void
     {
-        $oneToOneAttribute = $property->getAttributes(OneToOne::class);
-        $joinColumnAttribute = $property->getAttributes(JoinColumn::class);
-
-        if (!empty($oneToOneAttribute) && !empty($joinColumnAttribute)) {
-            $relation = $oneToOneAttribute[0]->newInstance();
-            $join = $joinColumnAttribute[0]->newInstance();
-            $propertyName = $property->getName();
-            [$table] = MetadataParser::parse(new ($relation->entity)());
-
-            $relations[$propertyName] = [
-                "type" => "OneToOne",
-                "entity" => $relation->entity,
-                "table" => $table,
-                "foreignKey" => $join->name,
-                "referencedColumn" => $join->referencedColumn,
-//                "foreignKey" => $join->referencedColumn,
-//                "referencedColumn" => $join->name,
-                "alias" => strtolower($table . '__' . $propertyName),
-            ];
+        $oneToOneAttributes = $property->getAttributes(OneToOne::class);
+        if (empty($oneToOneAttributes)) {
+            return;
         }
+
+        /** @var OneToOne $oneToOne */
+        $oneToOne = $oneToOneAttributes[0]->newInstance();
+
+        $targetReflection = ReflectionCache::get($oneToOne->entity);
+        $tableAttrs = $targetReflection->getAttributes(Table::class);
+        if (empty($tableAttrs)) {
+            return;
+        }
+
+        /** @var Table $targetTableInstance */
+        $targetTableInstance = $tableAttrs[0]->newInstance();
+        $targetTableName = $targetTableInstance->name;
+
+        if (isset($oneToOne->mappedBy)) {
+            // Inverse side
+            $owningPropertyName = $oneToOne->mappedBy;
+            if (!$targetReflection->hasProperty($owningPropertyName)) {
+                return;
+            }
+            $owningProperty = $targetReflection->getProperty($owningPropertyName);
+            $joinColumnAttributes = $owningProperty->getAttributes(JoinColumn::class);
+            if (empty($joinColumnAttributes)) {
+                return;
+            }
+            $join = $joinColumnAttributes[0]->newInstance();
+            $inverse = true;
+        } else {
+            // Owning side
+            $joinColumnAttributes = $property->getAttributes(JoinColumn::class);
+            if (empty($joinColumnAttributes)) {
+                return;
+            }
+            $join = $joinColumnAttributes[0]->newInstance();
+            $inverse = false;
+        }
+
+        $relations[$property->getName()] = [
+            "type" => "OneToOne",
+            "entity" => $oneToOne->entity,
+            "table" => $targetTableName,
+            "foreignKey" => $join->name,
+            "referencedColumn" => $join->referencedColumn,
+            "alias" => strtolower($targetTableName . '__' . $property->getName()),
+            "inverse" => $inverse,
+        ];
     }
 }

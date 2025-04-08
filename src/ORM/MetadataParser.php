@@ -61,8 +61,10 @@ class MetadataParser
     /**
      * Parses a property annotated with #[Column] and adds its metadata to the result array.
      *
+     * @param string $table
      * @param ReflectionProperty $property
      * @param array $columns Reference to the result array to populate
+     *
      * @return void
      */
     private static function parseColumn(string $table, ReflectionProperty $property, array &$columns): void
@@ -120,8 +122,10 @@ class MetadataParser
                 "type" => "OneToOne",
                 "entity" => $relation->entity,
                 "table" => $table,
-                "foreignKey" => $join->referencedColumn,
-                "referencedColumn" => $join->name,
+                "foreignKey" => $join->name,
+                "referencedColumn" => $join->referencedColumn,
+//                "foreignKey" => $join->referencedColumn,
+//                "referencedColumn" => $join->name,
                 "alias" => strtolower($table . '__' . $propertyName),
             ];
         }

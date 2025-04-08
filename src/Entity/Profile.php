@@ -3,6 +3,7 @@
 namespace Entity;
 
 use ORM\Attributes\Column;
+use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
 
@@ -18,7 +19,8 @@ class Profile
     #[Column(name: "birthday", type: "date")]
     public string $birthday;
 
-//    #[OneToOne(entity: User::class)]
-//    #[JoinColumn(name: "user_id", referencedColumn: "id")]
-//    public User $user;
+    // Owning side: Profile holds the foreign key "user_id"
+    #[OneToOne(entity: User::class, inversedBy: "profile")]
+    #[JoinColumn(name: "user_id", referencedColumn: "id")]
+    public User $user;
 }

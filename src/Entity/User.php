@@ -22,8 +22,8 @@ class User implements JsonSerializable
     #[Column(name: "email", type: "string", length: 255)]
     public string $email;
 
-    #[OneToOne(entity: Profile::class)]
-    #[JoinColumn(name: "user_id", referencedColumn: "id")]
+    // Inverse side: User use mappedBy "user" from Entity\Profile
+    #[OneToOne(entity: Profile::class, mappedBy: "user")]
     public Profile $profile;
 
     public function jsonSerialize(): mixed

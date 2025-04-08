@@ -1,6 +1,7 @@
 <?php
 
 use Dotenv\Dotenv;
+use Entity\Profile;
 use Entity\User;
 use ORM\Drivers\PDODriver;
 use ORM\EntityManager;
@@ -192,7 +193,8 @@ $driver = PDODriver::default();
 $logger = LoggerFactory::create();
 $entityManager = new EntityManager($driver, $logger);
 
-$user = $entityManager->find(User::class, 1);
+$user = $entityManager->find(Profile::class, 1);
+var_dump($user);
 var_dump($user);
 
 //$users = $entityManager->findAll(User::class);

@@ -2,19 +2,32 @@
 
 namespace Entity;
 
+use JsonSerializable;
 use ORM\Attributes\Column;
+use ORM\Attributes\Entity;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
 
-#[Table(name: "profiles")]
-class Profile
+#[Entity]
+#[Table("profiles")]
+class Profile implements JsonSerializable
 {
-    #[Column(name: "id", type: "int", primary: true, autoIncrement: true)]
+    #[Id]
+    #[GeneratedValue]
+    #[Column(type: "int", name: "id", nullable: false)]
     public int $id;
 
-    #[Column(name: "bio", type: "string", length: 255)]
-    public string $bio;
+    #[Column(type: "text", name: "bio", nullable: true)]
+    public ?string $bio = null;
 
-    #[Column(name: "birthday", type: "date")]
-    public string $birthday;
+    #[OneToOne(entity: User::class, mappedBy: "profile")]
+    public ?User $user = null;
+
+    public function jsonSerialize(): mixed
+    {
+        return [
+            "id"  => $this->id,
+            "bio" => $this->bio,
+        ];
+    }
 }

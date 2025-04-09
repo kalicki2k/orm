@@ -4,26 +4,30 @@ namespace Entity;
 
 use JsonSerializable;
 use ORM\Attributes\Column;
+use ORM\Attributes\Entity;
+use ORM\Attributes\GeneratedValue;
+use ORM\Attributes\Id;
 use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
-use ORM\Attributes\PrimaryGeneratedColumn;
 use ORM\Attributes\Table;
 
-#[Table(name: "users")]
+#[Entity]
+#[Table("users")]
 class User implements JsonSerializable
 {
-//    #[Column(name: "id", type: "int", primary: true, autoIncrement: true)]
-    #[PrimaryGeneratedColumn(name: "id", type: "int")]
+    #[Id]
+    #[GeneratedValue]
+    #[Column(type: "int")]
     public int $id;
 
-    #[Column(name: "username", type: "string", length: 255)]
+    #[Column(type: "string", length: 255, nullable: false)]
     public string $username;
 
-    #[Column(name: "email", type: "string", length: 255)]
+    #[Column(type: "string", length: 255, nullable: false)]
     public string $email;
 
     #[OneToOne(entity: Profile::class)]
-    #[JoinColumn(name: "profile_id", referencedColumn: "id")]
+    #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
     public Profile $profile;
 
     public function jsonSerialize(): mixed

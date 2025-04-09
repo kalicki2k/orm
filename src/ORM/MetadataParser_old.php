@@ -5,9 +5,8 @@ namespace ORM;
 use ORM\Attributes\Column;
 use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
-use ORM\Attributes\PrimaryGeneratedColumn;
 use ORM\Attributes\Table;
-use ORM\Util\ReflectionCache;
+use ORM\Util\ReflectionCacheInstance;
 use ReflectionException;
 use ReflectionProperty;
 use RuntimeException;
@@ -17,7 +16,7 @@ use RuntimeException;
  *
  * Parses PHP attributes on entity classes to extract ORM metadata.
  */
-class MetadataParser
+class MetadataParserOld
 {
     /**
      * Parses metadata (table name and columns) from a given entity instance.

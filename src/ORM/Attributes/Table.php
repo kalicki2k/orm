@@ -6,30 +6,28 @@ use Attribute;
 use InvalidArgumentException;
 
 /**
- * Marks a class as a database entity and maps it to a database table.
+ * Specifies the table that a database entity is mapped to.
  *
- * Example usage:
+ * This attribute should be used in combination with #[Entity] to mark a class as a database entity
+ * and to define the name of the corresponding table.
+ *
+ * Example:
+ *   #[Entity]
  *   #[Table(name: "users")]
  *   class User {
  *       // ...
  *   }
  *
+ * @see \ORM\Attributes\Entity
  * @see \ORM\MetadataParser
  */
 #[Attribute(Attribute::TARGET_CLASS)]
 class Table
 {
     /**
-     * Constructs a new Table attribute instance.
+     * Creates a new Table attribute instance.
      *
-     * @param string $name Name of the table in the database (must be non-empty).
-     *
-     * @throws InvalidArgumentException If the table name is empty.
+     * @param string $name The name of the table in the database.
      */
-    public function __construct(public string $name)
-    {
-        if (trim($name) === '') {
-            throw new InvalidArgumentException("Table name cannot be empty.");
-        }
-    }
+    public function __construct(public string $name) {}
 }

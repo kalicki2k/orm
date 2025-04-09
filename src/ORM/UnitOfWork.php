@@ -126,6 +126,11 @@ class UnitOfWork
     private function assignAutoIncrementId(object $entity, array $columns, string $table): void
     {
         foreach ($columns as $property => $column) {
+            // Überspringe Join-Columns
+            if (!empty($column["joinColumn"])) {
+                continue;
+            }
+
             if (($column["primary"] ?? false) && ($column["autoIncrement"] ?? false)) {
                 $id = $this->entityManager->getDatabaseDriver()->lastInsertId($table, $column["name"]);
                 $entity->$property = is_numeric($id) ? (int)$id : $id;
@@ -241,8 +246,6 @@ class UnitOfWork
      */
     private function buildInsertParts(object $entity, array $columns): array
     {
-        $reflectionClass = ReflectionCache::get($entity);
-
         $fields = [];
         $placeholders = [];
         $values = [];
@@ -253,27 +256,34 @@ class UnitOfWork
             if (!empty($column["autoIncrement"])) {
                 continue;
             }
-
             $field = $this->entityManager->getDatabaseDriver()->quoteIdentifier($column["name"]);
-            $reflectionProperty = $reflectionClass->getProperty($property);
-
-            if (!$reflectionProperty->isInitialized($entity)) {
-                // Handle uninitialized nullable or defaulted properties
-                if (!empty($column["nullable"])) {
-                    $fields[] = $field;
-                    $placeholders[] = ":{$column["name"]}";
-                    $values[":{$column["name"]}"] = null;
-                } elseif (array_key_exists("default", $column)) {
-                    $fields[] = $field;
-                    $placeholders[] = ":{$column["name"]}";
-                    $values[":{$column["name"]}"] = $column["default"];
-                }
-                continue;
-            }
-
             $fields[] = $field;
-            $placeholders[] = ":{$column["name"]}";
-            $values[":{$column["name"]}"] = $entity->$property;
+            $placeholder = ":{$column["name"]}";
+            $placeholders[] = $placeholder;
+
+            if (property_exists($entity, $property)) {
+                $value = $entity->$property;
+                // Falls es sich um eine JoinColumn handelt und der Wert ein Objekt ist,
+                // extrahiere den Primärschlüssel aus der verknüpften Entität.
+                if (!empty($column["joinColumn"]) && is_object($value)) {
+                    // Hole die Metadaten der assoziierten Entität.
+                    [$targetTable, $targetColumns, ] = $this->entityManager->getMetadata($value);
+                    $relatedId = null;
+                    foreach ($targetColumns as $propName => $data) {
+                        if (!empty($data["primary"])) {
+                            $relatedId = $value->$propName;
+                            break;
+                        }
+                    }
+                    $values[$placeholder] = $relatedId;
+                } else {
+                    // Andernfalls, falls es sich nicht um eine JoinColumn handelt,
+                    // wird der direkte Wert verwendet.
+                    $values[$placeholder] = $value;
+                }
+            } else {
+                $values[$placeholder] = null;
+            }
         }
 
         return [$fields, $placeholders, $values];

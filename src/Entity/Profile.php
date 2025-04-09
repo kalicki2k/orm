@@ -20,7 +20,7 @@ class Profile
     public string $birthday;
 
     // Owning side: Profile holds the foreign key "user_id"
-    #[OneToOne(entity: User::class, inversedBy: "profile")]
+    #[OneToOne(entity: User::class, inversedBy: "profile", fetch: "EAGER")]
     #[JoinColumn(name: "user_id", referencedColumn: "id")]
     public User $user;
 }

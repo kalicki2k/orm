@@ -829,13 +829,25 @@ class EntityManager
         $relatedInstance = new $relation["entity"]();
 
         foreach ($relatedColumns as $relatedProperty => $relatedColumn) {
+            // Prüfe, ob diese Property in der Zielentität eine assoziative Relation ist.
+            $reflectionProperty = new \ReflectionProperty($relation["entity"], $relatedProperty);
+            $associationAttrs = $reflectionProperty->getAttributes(\ORM\Attributes\OneToOne::class);
+            if (!empty($associationAttrs)) {
+                // Diese Spalte gehört zu einer Relation (z. B. JoinColumn in einer OneToOne-Verbindung)
+                // und sollte nicht direkt zugewiesen werden.
+                continue;
+            }
+
+            // Erzeuge den erwarteten Alias (z. B. "profiles__profile__bio")
             $alias = "{$relation['alias']}__{$relatedColumn['name']}";
-            if (isset($data[$alias])) {
+            // Verwende array_key_exists, damit auch NULL-Werte gesetzt werden
+            if (array_key_exists($alias, $data)) {
                 $relatedInstance->$relatedProperty = $data[$alias];
             }
         }
         return $relatedInstance;
     }
+
 
 
     /**

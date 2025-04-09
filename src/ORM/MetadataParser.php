@@ -45,6 +45,7 @@ class MetadataParser
         foreach ($reflectionClass->getProperties() as $property) {
             self::parseColumn($table->name, $property, $columns);
             self::parseRelation($property, $relations);
+            self::parseJoinColumn($table->name, $property, $columns);
         }
 
         return [
@@ -156,4 +157,61 @@ class MetadataParser
             "inverse" => $inverse,
         ];
     }
+
+    private static function parseJoinColumn(string $table, ReflectionProperty $property, array &$columns): void
+    {
+        // Falls bereits ein Eintrag für diese Property vorhanden ist, mache nichts.
+        if (isset($columns[$property->getName()])) {
+            return;
+        }
+
+        $joinAttrs = $property->getAttributes(\ORM\Attributes\JoinColumn::class);
+        $oneToOneAttrs = $property->getAttributes(\ORM\Attributes\OneToOne::class);
+
+        if (!empty($joinAttrs) && !empty($oneToOneAttrs)) {
+            /** @var \ORM\Attributes\JoinColumn $join */
+            $join = $joinAttrs[0]->newInstance();
+
+            // Ermittele die Zielspalte (über die referenzierte Spalte in der Zielentität)
+            $targetEntity = $oneToOneAttrs[0]->newInstance()->entity;
+            $targetMetadata = MetadataParser::parse(new $targetEntity());
+            $targetColumns = $targetMetadata[1];
+
+            $targetColumnData = null;
+            foreach ($targetColumns as $colData) {
+                if ($colData["name"] === $join->referencedColumn) {
+                    $targetColumnData = $colData;
+                    break;
+                }
+            }
+            if ($targetColumnData !== null) {
+                $type          = $targetColumnData["type"];
+                $primary       = $targetColumnData["primary"];
+                $autoIncrement = $targetColumnData["autoIncrement"];
+                $nullable      = $targetColumnData["nullable"];
+                $default       = $targetColumnData["default"];
+            } else {
+                $type          = "int";
+                $primary       = false;
+                $autoIncrement = false;
+                $nullable      = false;
+                $default       = null;
+            }
+
+            $columns[$property->getName()] = [
+                "table"         => $table,
+                "name"          => $join->name,
+                "alias"         => "{$table}__{$join->name}",
+                "type"          => $type,
+                "primary"       => $primary,
+                "autoIncrement" => $autoIncrement,
+                "nullable"      => $nullable,
+                "default"       => $default,
+                "joinColumn"    => true,  // Markiere diesen Eintrag als Join-Column
+            ];
+        }
+    }
+
+
+
 }

@@ -8,7 +8,7 @@ use ORM\Attributes\JoinColumn;
 
 class MetadataEntity
 {
-    protected string $tableName;
+    protected string $table;
     protected ?string $primaryKey = null;
     protected bool $primaryKeyGenerated = false;
     protected array $columns = [];
@@ -20,15 +20,15 @@ class MetadataEntity
 
     public function __construct(protected string $entityName) {}
 
-    public function setTableName(string $tableName): MetadataEntity
+    public function setTable(string $table): MetadataEntity
     {
-        $this->tableName = $tableName;
+        $this->table = $table;
         return $this;
     }
 
-    public function getTableName(): string
+    public function getTable(): string
     {
-        return $this->tableName;
+        return $this->table;
     }
 
     /**

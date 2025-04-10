@@ -65,11 +65,11 @@ class EntityManager {
             ->select($select)
             ->where($where, $parameters)
             ->execute();
+        $data = $statement->fetch();
 
+        var_dump($data);
 
-        var_dump($statement);
-
-        return $metadata;
+        return $statement;
     }
 
     protected function getMetadata(string $entityName): MetadataEntity

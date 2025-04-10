@@ -17,4 +17,6 @@ $dotenv->load();
 
 $entityManager = new EntityManager(PDODriver::default(), new MetadataParser());
 
-$entityManager->find(User::class, ["id" => 1]);
+$user = $entityManager->find(User::class, ["id" => 1]);
+
+//var_dump($user);

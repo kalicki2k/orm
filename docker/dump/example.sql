@@ -1,18 +1,22 @@
 USE orm;
 
-CREATE TABLE users
-(
-    id       INT AUTO_INCREMENT PRIMARY KEY,
-    username VARCHAR(255) NOT NULL,
-    email    VARCHAR(255) NOT NULL
+CREATE TABLE profiles (
+                          id INT AUTO_INCREMENT PRIMARY KEY,
+                          bio VARCHAR(255),
+                          birthday DATE
+--     user_id INT UNIQUE,
+--     FOREIGN KEY (user_id) REFERENCES users(id)
+--       ON DELETE CASCADE
+--       ON UPDATE CASCADE
 );
 
-CREATE TABLE profiles (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    bio VARCHAR(255),
-    birthday DATE,
-    user_id INT UNIQUE,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+CREATE TABLE users
+(
+    id          INT AUTO_INCREMENT PRIMARY KEY,
+    username    VARCHAR(255) NOT NULL,
+    email       VARCHAR(255) NOT NULL,
+    profile_id   INT UNIQUE,
+    FOREIGN KEY (profile_id) REFERENCES profiles(id)
       ON DELETE CASCADE
       ON UPDATE CASCADE
 );

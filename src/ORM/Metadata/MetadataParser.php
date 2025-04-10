@@ -25,19 +25,12 @@ class MetadataParser
         $entityAttributes = $reflection->getAttributes(Entity::class);
         $tableAttributes = $reflection->getAttributes(Table::class);
 
-        if (empty($entityAttributes)) {
+        if (empty($entityAttributes) || empty($tableAttributes)) {
             throw new InvalidArgumentException("The class {$entityName} is not marked as an entity.");
         }
 
-        if (empty($tableAttributes)) {
-            throw new InvalidArgumentException("The class {$entityName} is not marked as an table.");
-        }
-
         $metadataEntity = new MetadataEntity($entityName);
-
-        /** @var Table $tableAttribute */
-        $tableAttribute = $tableAttributes[0]->newInstance();
-        $metadataEntity->setTableName($tableAttribute->name);
+        $metadataEntity->setTable($tableAttributes[0]->newInstance()->name);
 
         foreach ($reflection->getProperties() as $property) {
             $this
@@ -108,15 +101,12 @@ class MetadataParser
         $oneToOneAttributes = $property->getAttributes(OneToOne::class);
 
         if (!empty($oneToOneAttributes)) {
-            /** @var OneToOne $oneToOne */
-            $oneToOne = $oneToOneAttributes[0]->newInstance();
-
             $joinColumnAttributes = $property->getAttributes(JoinColumn::class);
             $joinColumn = !empty($joinColumnAttributes)
                 ? $joinColumnAttributes[0]->newInstance()
                 : null;
 
-            $metadataEntity->addRelation($property->getName(), $oneToOne, $joinColumn);
+            $metadataEntity->addRelation($property->getName(), $oneToOneAttributes[0]->newInstance(), $joinColumn);
         }
 
         return $this;

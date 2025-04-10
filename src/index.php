@@ -14,6 +14,7 @@ require_once 'vendor/autoload.php';
 $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
-$entityManager = new EntityManager(new MetadataParser());
 
-$entityManager->find(User::class, 1);
+$entityManager = new EntityManager(PDODriver::default(), new MetadataParser());
+
+$entityManager->find(User::class, ["id" => 1]);

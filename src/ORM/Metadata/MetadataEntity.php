@@ -65,7 +65,7 @@ class MetadataEntity
     {
         $this->columns[$column->name] = [
             'name' => $column->name,
-            'column' => $column,
+            'attributes' => $column,
         ];
         return $this;
     }

@@ -53,6 +53,8 @@ class QueryBuilder
     {
         try {
             $sql = $this->getSQL();
+            var_dump($sql);
+
             $statement = $this->databaseDriver->prepare($sql);
 
             foreach ($this->parameters as $parameter => $value) {

@@ -18,25 +18,55 @@ class User implements JsonSerializable
     #[Id]
     #[GeneratedValue]
     #[Column(type: "int")]
-    public int $id;
+    private int $id;
 
     #[Column(type: "string", length: 255, nullable: false)]
-    public string $username;
+    private string $username;
 
     #[Column(type: "string", length: 255, nullable: false)]
-    public string $email;
+    private string $email;
 
     #[OneToOne(entity: Profile::class)]
     #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
-    public Profile $profile;
+    private Profile $profile;
+
+    public function getId(): int
+    {
+        return $this->id;
+    }
+
+    public function setId(int $id): void
+    {
+        $this->id = $id;
+    }
+
+    public function getUsername(): string
+    {
+        return $this->username;
+    }
+
+    public function setUsername(string $username): void
+    {
+        $this->username = $username;
+    }
+
+    public function getEmail(): string
+    {
+        return $this->email;
+    }
+
+    public function setEmail(string $email): void
+    {
+        $this->email = $email;
+    }
 
     public function jsonSerialize(): mixed
     {
         return [
-            "id" => $this->id,
-            "username" => $this->username,
-            "email" => $this->email,
-            "profile" => $this->profile,
+            "id" => $this->getId(),
+            "username" => $this->getUsername(),
+            "email" => $this->getEmail(),
+//            "profile" => $this->profile,
         ];
     }
 }

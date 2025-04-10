@@ -30,7 +30,9 @@ class MetadataParser
         }
 
         $metadataEntity = new MetadataEntity($entityName);
-        $metadataEntity->setTable($tableAttributes[0]->newInstance()->name);
+        $metadataEntity
+            ->setTable($tableAttributes[0]->newInstance()->name)
+            ->setAlias(strtolower($reflection->getShortName()));
 
         foreach ($reflection->getProperties() as $property) {
             $this

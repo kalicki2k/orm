@@ -19,4 +19,4 @@ $entityManager = new EntityManager(PDODriver::default(), new MetadataParser());
 
 $user = $entityManager->find(User::class, ["id" => 1]);
 
-//var_dump($user);
+var_dump($user);

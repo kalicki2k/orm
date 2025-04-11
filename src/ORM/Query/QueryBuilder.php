@@ -144,7 +144,6 @@ class QueryBuilder
     {
         try {
             $sql = $this->getSQL();
-            var_dump($sql);
 
             $statement = $this->databaseDriver->prepare($sql);
 
@@ -162,8 +161,7 @@ class QueryBuilder
 
     protected function getSelectSQL(): string
     {
-        $columns = implode(", ", $this->selectColumns);
-        $sqlParts = ["SELECT {$columns} FROM {$this->table}"];
+        $sqlParts = ["SELECT " . implode(", ", $this->selectColumns) . " FROM {$this->table}"];
 
         if (!empty($this->whereConditions)) {
             $whereParts = [];

@@ -2,9 +2,13 @@
 
 namespace ORM\Query;
 
+use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
+use ORM\Logger\LogHelper;
+use ORM\Metadata\MetadataEntity;
 use PDOException;
+use Psr\Log\LoggerInterface;
 use RuntimeException;
 
 class QueryBuilder
@@ -15,26 +19,113 @@ class QueryBuilder
     protected array $whereConditions = [];
     protected array $parameters = [];
 
-    public function __construct(protected DatabaseDriver $databaseDriver) {}
+    public function __construct(
+        protected readonly DatabaseDriver $databaseDriver,
+        protected readonly ?LoggerInterface $logger = null,
+    ) {}
 
-    public function table(string $table): self
+    public function fromMetadata(MetadataEntity $metadata, int|string|array|null $conditions = null): self
     {
-        $this->table = $table;
+        $this->table($metadata->getTable(), $metadata->getAlias());
+
+        if ($this->action === "select") {
+            $select = [];
+            $where = [];
+            $parameters = [];
+
+            foreach ($metadata->getColumns() as $column) {
+                $select["{$metadata->getAlias()}.{$column["name"]}"] = "{$metadata->getColumnAlias($column["name"])}";
+            }
+            $this->select($select);
+
+            if (!is_null($conditions) && !is_array($conditions)) {
+                $primaryKey = $metadata->getPrimaryKey();
+
+                if (!isset($primaryKey)) {
+                    throw new InvalidArgumentException("Primary key does not exist");
+                }
+
+                $where["{$metadata->getAlias()}.{$primaryKey}"] = ":{$primaryKey}";
+                $parameters[$primaryKey] = $conditions;
+            } else {
+                foreach ($conditions as $key => $value) {
+                    $where["{$metadata->getAlias()}.{$key}"] = ":{$key}";
+                    $parameters[$key] = $value;
+                }
+            }
+
+            $this
+                ->where($where, $parameters);
+        }
+
         return $this;
     }
 
-    public function select(array $selectColumns): self
+    public function table(string $table, ?string $alias = null): self
+    {
+        $this->table = $this->databaseDriver->quoteIdentifier($table);
+
+        if (!empty($alias)) {
+            $this->table .= " AS {$this->databaseDriver->quoteIdentifier($alias)}";
+        }
+
+        return $this;
+    }
+
+    public function select(?array $selectColumns = null): self
     {
         $this->action = "select";
-        $this->selectColumns = $selectColumns;
+
+        if (!empty($selectColumns)) {
+            foreach ($selectColumns as $key => $value) {
+                if (is_int($key)) {
+                    $this->selectColumns[] = "{$this->databaseDriver->quoteIdentifier($value)}";
+                } else {
+                    [$table, $column] = explode(".", "$key", 2) + [null, null];
+
+                    if (is_null($column)) {
+                        $this->selectColumns[] = "{$this->databaseDriver->quoteIdentifier($table)} AS {$this->databaseDriver->quoteIdentifier($value)}";
+                    } else {
+                        $this->selectColumns[] = "{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)} AS {$this->databaseDriver->quoteIdentifier($value)}";
+                    }
+                }
+            }
+        }
+
         return $this;
     }
 
-    public function where(array $whereConditions, array $parameters = []): self
+    public function insert(): self
     {
-        $this->whereConditions = $whereConditions;
-        $this->parameters = $parameters;
+        $this->action = "insert";
+        return $this;
+    }
 
+    public function update(): self
+    {
+        $this->action = "update";
+        return $this;
+    }
+
+    public function delete(): self
+    {
+        $this->action = "delete";
+        return $this;
+    }
+
+    public function where(array $whereConditions, array $parameters): self
+    {
+        foreach ($whereConditions as $key => $value) {
+            [$table, $column] = explode(".", "$key", 2) + [null, null];
+
+            if (is_null($column)) {
+                $this->whereConditions["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;
+            } else {
+                $this->whereConditions["{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)}"] = $value;
+            }
+        }
+
+        $this->parameters = $parameters;
         return $this;
     }
 
@@ -61,6 +152,7 @@ class QueryBuilder
                 $statement->bindValue(":{$parameter}", $value);
             }
 
+            LogHelper::query($sql, $this->parameters, $this->logger);
             $statement->execute();
             return $statement;
         } catch (PDOException $e) {
@@ -70,22 +162,17 @@ class QueryBuilder
 
     protected function getSelectSQL(): string
     {
-        $sqlParts = [];
-
-        foreach ($this->selectColumns as &$column) {
-            $column = $this->databaseDriver->quoteIdentifier($column);
-        }
-
         $columns = implode(", ", $this->selectColumns);
-
-        $sqlParts[] = "SELECT {$columns} FROM {$this->databaseDriver->quoteIdentifier($this->table)}";
+        $sqlParts = ["SELECT {$columns} FROM {$this->table}"];
 
         if (!empty($this->whereConditions)) {
-            $sqlParts[] = "WHERE";
+            $whereParts = [];
 
             foreach ($this->whereConditions as $key => $value) {
-                $sqlParts[] = "{$this->databaseDriver->quoteIdentifier($key)} = {$value}";
+                $whereParts[] = "$key = {$value}";
             }
+
+            $sqlParts[] = "WHERE " . implode(" AND ", $whereParts);
         }
 
         return implode(" ", $sqlParts);

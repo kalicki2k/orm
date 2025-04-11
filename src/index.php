@@ -6,7 +6,6 @@ use ORM\Drivers\PDODriver;
 use ORM\EntityManager;
 use ORM\Logger\LoggerFactory;
 use ORM\Metadata\MetadataParser;
-use ORM\Stream\StreamWrapper;
 
 require_once 'vendor/autoload.php';
 
@@ -14,8 +13,7 @@ require_once 'vendor/autoload.php';
 $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
-
-$entityManager = new EntityManager(PDODriver::default(), new MetadataParser());
+$entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
 
 $user = $entityManager->find(User::class, ["id" => 1]);
 

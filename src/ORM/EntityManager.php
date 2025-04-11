@@ -33,62 +33,31 @@ class EntityManager {
         private readonly MetadataParser $metadataParser,
         private readonly ?LoggerInterface $logger = null,
     ) {
-        $this->queryBuilder = new QueryBuilder($this->databaseDriver);
+        $this->queryBuilder = new QueryBuilder($this->databaseDriver, $this->logger);
     }
 
     /**
      * Finds and returns an entity instance by its primary key.
      *
      * @param string $entityName The fully qualified class name of the entity.
-     * @param mixed $id The primary key value or an associative array of key-value pairs for composite keys.
+     * @param int|string|array|null $conditions The primary key value or an associative array of key-value pairs for composite keys.
+     * @param array $relations
      * @return object|null The entity object if found, or null if no match is found.
      *
      * @throws InvalidArgumentException If the entity does not have a primary key defined.
+     * @throws DateMalformedStringException
+     * @throws ReflectionException
      */
-    public function find(string $entityName, mixed $id, array $relations = []): ?object
+    public function find(string $entityName, int|string|array|null $conditions = null, array $relations = []): ?object
     {
+
         $metadata = $this->getMetadata($entityName);
-        $select = [];
-        $where = [];
-        $parameters = [];
-
-        foreach ($metadata->getColumns() as $column) {
-            $select[] = $column["name"];
-        }
-
-        foreach ($metadata->getRelations() as $relation) {
-            if (array_key_exists("joinColumn", $relation)) {
-                $select[] = $relation["joinColumn"]->name;
-            }
-        }
-
-        if (!is_array($id)) {
-            $primaryKey = $metadata->getPrimaryKey();
-
-            if (!isset($primaryKey)) {
-                throw new InvalidArgumentException("Primary key does not exist");
-            }
-
-            $where[$primaryKey] = ":{$primaryKey}";
-            $parameters[$primaryKey] = $id;
-        } else {
-            foreach ($id as $key => $value) {
-                $where[$key] = ":{$key}";
-                $parameters[$key] = $value;
-            }
-        }
-
-        $statement = clone $this->queryBuilder->table($metadata->getTable())
-            ->select($select)
-            ->where($where, $parameters)
-            ->execute();
-
+        $statement = clone $this->queryBuilder->select()->fromMetadata($metadata, $conditions)->execute();
         $data = $statement->fetch();
 
         if (!$data) {
             return null;
         }
-
 
         return $this->hydrateEntity($metadata, $data);
     }
@@ -111,17 +80,19 @@ class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    protected function hydrateEntity(MetadataEntity $metadataEntity, array $data): object
+    protected function hydrateEntity(MetadataEntity $metadata, array $data): object
     {
-        $reflection = ReflectionCacheInstance::getInstance()->get($metadataEntity->getEntityName());
+        $reflection = ReflectionCacheInstance::getInstance()->get($metadata->getEntityName());
         $entity = $reflection->newInstanceWithoutConstructor();
 
-        foreach ($metadataEntity->getColumns() as $property => $column) {
-            if (!array_key_exists($column["name"], $data)) {
+        foreach ($metadata->getColumns() as $property => $column) {
+            $name = "{$metadata->getAlias()}_{$column["name"]}";
+
+            if (!array_key_exists($name, $data)) {
                 continue;
             }
 
-            $value = $this->hydrateColumn($data[$column["name"]], $column["type"] ?? null);
+            $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
             $reflectionProperty = $reflection->getProperty($property);
             $reflectionProperty->setValue($entity, $value);
         }
@@ -150,6 +121,7 @@ class EntityManager {
 
     protected function hydrateRelation(array $relations, array $data): ?object
     {
-
+        // Todo implement...
+        return new \stdClass();
     }
 }

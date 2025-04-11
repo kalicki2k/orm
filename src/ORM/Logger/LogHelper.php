@@ -19,16 +19,16 @@ class LogHelper
      * The log level used is DEBUG.
      *
      * @param string $sql The raw SQL query string.
-     * @param array $params An associative array of query parameters (e.g., [':id' => 123]).
+     * @param array $parameters An associative array of query parameters (e.g., [":id" => 123]).
      * @param LoggerInterface|null $logger A PSR-3 compatible logger instance (e.g., Monolog).
      *
      * @return void
      */
-    public static function query(string $sql, array $params = [], ?LoggerInterface $logger = null): void
+    public static function query(string $sql, array $parameters = [], ?LoggerInterface $logger = null): void
     {
         $logger?->debug('Executing SQL', [
             'sql' => $sql,
-            'params' => $params,
+            'parameters' => $parameters,
         ]);
     }
 }

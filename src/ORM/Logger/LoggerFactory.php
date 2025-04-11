@@ -20,21 +20,17 @@ class LoggerFactory
      * In other environments (e.g., production), logs are written to a file with WARNING level or higher.
      *
      * @param string $name The name of the logger (default: "orm").
-     * @param string $file The fallback log file path for non-dev environments (default: "/tmp/orm.log").
+     * @param StreamHandler $streamHandler
+     *
      * @return Logger Configured Monolog logger.
      */
-    public static function create(string $name = "orm", string $file = "/tmp/orm.log"): Logger
+    public static function create(
+        string $name = "orm",
+        StreamHandler $streamHandler = new StreamHandler('php://stdout', Level::Debug),
+    ): Logger
     {
         $logger = new Logger($name);
-
-        if ($_ENV["ENV"] === "dev") {
-            // Development: output everything to console
-            $logger->pushHandler(new StreamHandler('php://stdout', Level::Debug));
-        } else {
-            // Production: log only warnings or above to file
-            $logger->pushHandler(new StreamHandler($file, Level::Warning));
-        }
-
+        $logger->pushHandler($streamHandler);
         return $logger;
     }
 }

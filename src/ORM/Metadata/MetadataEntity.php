@@ -80,22 +80,22 @@ class MetadataEntity
      * Returns the aliased column name for a given property.
      *
      * @param string $propertyName The name of the entity property.
-     * @return string The SQL alias (e.g., 'user__email').
+     * @return string The SQL alias (e.g., 'users_email').
      */
     public function getColumnAlias(string $propertyName): string
     {
-        return "{$this->alias}__{$this->columns[$propertyName]['name']}";
+        return "{$this->alias}_{$this->columns[$propertyName]['name']}";
     }
 
     /**
      * Returns the alias used for a relation join.
      *
      * @param string $propertyName The name of the relation property.
-     * @return string The SQL alias (e.g., 'user_profile').
+     * @return string The SQL alias (e.g., 'users__profile').
      */
     public function getRelationAlias(string $propertyName): string
     {
-        return "{$this->alias}_{$propertyName}";
+        return "{$this->alias}__{$propertyName}";
     }
 
     /**
@@ -173,8 +173,8 @@ class MetadataEntity
     public function addColumn(Column $column): MetadataEntity
     {
         $this->columns[$column->name] = [
-            'name' => $column->name,
-            'attributes' => $column,
+            "name" => $column->name,
+            "attributes" => $column,
         ];
         return $this;
     }

@@ -52,7 +52,17 @@ class EntityManager {
     {
 
         $metadata = $this->getMetadata($entityName);
-        $statement = clone $this->queryBuilder->select()->fromMetadata($metadata, $conditions)->execute();
+        $statement = clone $this
+            ->queryBuilder
+            ->select()
+            ->fromMetadata(
+                $metadata,
+                $conditions,
+                fn(string $class) => $this->getMetadata($class),
+                $relations,
+            )
+            ->execute();
+
         $data = $statement->fetch();
 
         if (!$data) {
@@ -93,8 +103,15 @@ class EntityManager {
             }
 
             $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
-            $reflectionProperty = $reflection->getProperty($property);
-            $reflectionProperty->setValue($entity, $value);
+            $reflection->getProperty($property)->setValue($entity, $value);
+        }
+
+        foreach ($metadata->getRelations() as $property => $relation) {
+            $related = $this->hydrateRelation($metadata, $property, $relation, $data);
+
+            if ($related !== null) {
+                $reflection->getProperty($property)->setValue($entity, $related);
+            }
         }
 
         return $entity;
@@ -119,9 +136,33 @@ class EntityManager {
         };
     }
 
-    protected function hydrateRelation(array $relations, array $data): ?object
-    {
-        // Todo implement...
-        return new \stdClass();
+    /**
+     * @throws ReflectionException
+     * @throws DateMalformedStringException
+     */
+    protected function hydrateRelation(
+        MetadataEntity $parentMetadata,
+        string $property,
+        array $relation,
+        array $data
+    ): ?object {
+        $relationAlias = $parentMetadata->getRelationAlias($property);
+        $alias = "{$relationAlias}_";
+
+        $relationData = array_filter(
+            $data,
+            fn($key) => str_starts_with($key, $alias),
+            ARRAY_FILTER_USE_KEY
+        );
+
+        if (empty($relationData) || count(array_filter($relationData, fn($v) => $v !== null)) === 0) {
+            return null;
+        }
+
+        $relatedMetadata = $this->getMetadata($relation["relation"]->entity);
+        $relatedMetadata->setAlias($parentMetadata->getRelationAlias($property));
+
+        return $this->hydrateEntity($relatedMetadata, $data);
     }
+
 }

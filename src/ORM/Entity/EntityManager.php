@@ -1,6 +1,6 @@
 <?php
 
-namespace ORM;
+namespace ORM\Entity;
 
 use DateMalformedStringException;
 use DateTimeImmutable;
@@ -12,15 +12,14 @@ use ORM\Query\QueryBuilder;
 use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
+use RuntimeException;
 
 /**
  * The central access point for ORM operations on entities.
  *
  * The EntityManager handles querying, persisting, and retrieving entity objects.
  */
-class EntityManager {
-    protected QueryBuilder $queryBuilder;
-
+readonly class EntityManager {
     /**
      * EntityManager constructor.
      *
@@ -29,11 +28,49 @@ class EntityManager {
      * @param LoggerInterface|null $logger Optional PSR-3 logger for SQL or debug output.
      */
     public function __construct(
-        private readonly DatabaseDriver $databaseDriver,
-        private readonly MetadataParser $metadataParser,
-        private readonly ?LoggerInterface $logger = null,
-    ) {
-        $this->queryBuilder = new QueryBuilder($this->databaseDriver, $this->logger);
+        private DatabaseDriver $databaseDriver,
+        private MetadataParser $metadataParser,
+        private ?LoggerInterface $logger = null,
+    ) {}
+
+    /**
+     * @throws ReflectionException
+     */
+    public function persist(EntityBase $entity): self
+    {
+        $metadata = $this->metadataParser->parse($entity::class);
+        $data = $this->metadataParser->extract($entity, true);
+
+        new QueryBuilder($this->databaseDriver, $this->logger)->insert()->fromMetadata($metadata, $data)->execute();
+
+        return $this;
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function update(EntityBase $entity): self
+    {
+        $metadata = $this->metadataParser->parse($entity::class);
+        $data = $this->metadataParser->extract($entity);
+
+        new QueryBuilder($this->databaseDriver, $this->logger)->update()->fromMetadata($metadata, $data)->execute();
+
+        return $this;
+    }
+
+    public function delete(EntityBase $entity): self
+    {
+        $metadata = $this->metadataParser->parse($entity::class);
+        $data = $this->metadataParser->extract($entity);
+        $id = $data[$metadata->getPrimaryKey()];
+
+        if ($id === null) {
+            throw new RuntimeException("Cannot delete entity without identifier.");
+        }
+
+        new QueryBuilder($this->databaseDriver, $this->logger)->delete()->fromMetadata($metadata, $id)->execute();
+        return $this;
     }
 
     /**
@@ -50,10 +87,8 @@ class EntityManager {
      */
     public function find(string $entityName, int|string|array|null $conditions = null, array $relations = []): ?object
     {
-
         $metadata = $this->getMetadata($entityName);
-        $statement = clone $this
-            ->queryBuilder
+        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
                 $metadata,
@@ -164,5 +199,4 @@ class EntityManager {
 
         return $this->hydrateEntity($relatedMetadata, $data);
     }
-
 }

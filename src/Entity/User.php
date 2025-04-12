@@ -2,7 +2,6 @@
 
 namespace Entity;
 
-use JsonSerializable;
 use ORM\Attributes\Column;
 use ORM\Attributes\Entity;
 use ORM\Attributes\GeneratedValue;
@@ -10,10 +9,11 @@ use ORM\Attributes\Id;
 use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
+use ORM\Entity\EntityBase;
 
 #[Entity]
 #[Table("users")]
-class User implements JsonSerializable
+class User extends EntityBase
 {
     #[Id]
     #[GeneratedValue]
@@ -35,9 +35,10 @@ class User implements JsonSerializable
         return $this->id;
     }
 
-    public function setId(int $id): void
+    public function setId(int $id): self
     {
         $this->id = $id;
+        return $this;
     }
 
     public function getUsername(): string
@@ -45,9 +46,10 @@ class User implements JsonSerializable
         return $this->username;
     }
 
-    public function setUsername(string $username): void
+    public function setUsername(string $username): self
     {
         $this->username = $username;
+        return $this;
     }
 
     public function getEmail(): string
@@ -55,9 +57,21 @@ class User implements JsonSerializable
         return $this->email;
     }
 
-    public function setEmail(string $email): void
+    public function setEmail(string $email): self
     {
         $this->email = $email;
+        return $this;
+    }
+
+    public function getProfile(): Profile
+    {
+        return $this->profile;
+    }
+
+    public function setProfile(Profile $profile): self
+    {
+        $this->profile = $profile;
+        return $this;
     }
 
     public function jsonSerialize(): mixed
@@ -66,7 +80,7 @@ class User implements JsonSerializable
             "id" => $this->getId(),
             "username" => $this->getUsername(),
             "email" => $this->getEmail(),
-//            "profile" => $this->profile,
+            "profile" => $this->getProfile(),
         ];
     }
 }

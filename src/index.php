@@ -3,7 +3,7 @@
 use Dotenv\Dotenv;
 use Entity\User;
 use ORM\Drivers\PDODriver;
-use ORM\EntityManager;
+use ORM\Entity\EntityManager;
 use ORM\Logger\LoggerFactory;
 use ORM\Metadata\MetadataParser;
 
@@ -15,6 +15,17 @@ $dotenv->load();
 
 $entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
 
-$user = $entityManager->find(User::class, ["id" => 1], ["profile"]);
+//$user = $entityManager->find(User::class, ["id" => 1], ["profile"]);
 
-var_dump($user);
+//var_dump($user);
+
+
+$newUser = new User();
+$newUser->setUsername("kalle")->setEmail("kalle@kalle.com");
+
+$entityManager->persist($newUser);
+
+//$user->setUsername("kalleUpdated")->setEmail("kalleUpdated@kalle.com");
+//
+//$entityManager->update($user);
+//$entityManager->delete($user);

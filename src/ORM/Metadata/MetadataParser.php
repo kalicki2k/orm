@@ -10,12 +10,38 @@ use ORM\Attributes\Id;
 use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
+use ORM\Entity\EntityBase;
 use ORM\Util\ReflectionCacheInstance;
 use ReflectionException;
 use ReflectionProperty;
 
 class MetadataParser
 {
+    /**
+     * @throws ReflectionException
+     */
+    public function extract(EntityBase $entity, bool $excludePrimaryKey = false) : array
+    {
+        $metadata = $this->parse($entity::class);
+        $reflection = ReflectionCacheInstance::getInstance()->get($entity::class);
+
+        $data = [];
+
+        foreach ($metadata->getColumns() as $property => $column) {
+            $isPrimary = $column['name'] === $metadata->getPrimaryKey();
+            $isGenerated = $metadata->isPrimaryKeyGenerated();
+
+            if ($excludePrimaryKey && $isPrimary && $isGenerated) {
+                continue;
+            }
+
+            $value = $reflection->getProperty($property)->getValue($entity);
+            $data[$column['name']] = $value;
+        }
+
+        return $data;
+    }
+
     /**
      * @throws ReflectionException
      */

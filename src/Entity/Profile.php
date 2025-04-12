@@ -9,10 +9,11 @@ use ORM\Attributes\GeneratedValue;
 use ORM\Attributes\Id;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
+use ORM\Entity\EntityBase;
 
 #[Entity]
 #[Table("profiles")]
-class Profile implements JsonSerializable
+class Profile extends EntityBase
 {
     #[Id]
     #[GeneratedValue]

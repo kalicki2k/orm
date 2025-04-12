@@ -13,10 +13,11 @@ use RuntimeException;
 
 class QueryBuilder
 {
-    protected string $action = "select";
-    protected string $table = "";
-    protected array $selectColumns  = [];
-    protected array $whereConditions = [];
+    protected ?string $action;
+    protected ?string $table;
+    protected array $values = [];
+    protected array $columns  = [];
+    protected array $where = [];
     protected array $joins = [];
     protected array $parameters = [];
 
@@ -27,69 +28,19 @@ class QueryBuilder
 
     public function fromMetadata(
         MetadataEntity $metadata,
-        int|string|array|null $conditions = null,
+        int|string|array|null $payload = null,
         ?callable $resolveMetadata = null,
         array $eagerRelations = []
     ): self {
         $this->table($metadata->getTable(), $metadata->getAlias());
 
-        if ($this->action === "select") {
-            $select = [];
-            $where = [];
-            $parameters = [];
-
-            foreach ($metadata->getColumns() as $column) {
-                $select["{$metadata->getAlias()}.{$column["name"]}"] = "{$metadata->getColumnAlias($column["name"])}";
-            }
-
-            if ($resolveMetadata) {
-                foreach ($metadata->getRelations() as $property => $relationData) {
-                    if (!in_array($property, $eagerRelations, true)) {
-                        continue;
-                    }
-
-                    $relation = $relationData['relation'] ?? null;
-                    $joinColumn = $relationData['joinColumn'] ?? null;
-
-                    if (!$relation || !$joinColumn) {
-                        continue;
-                    }
-
-                    $relatedMetadata = $resolveMetadata($relation->entity);
-                    $joinAlias = $metadata->getRelationAlias($property);
-                    $joinTable = $relatedMetadata->getTable();
-
-                    $on = "{$metadata->getAlias()}.{$joinColumn->name} = {$joinAlias}.{$joinColumn->referencedColumn}";
-
-                    $this->leftJoin($joinTable, $joinAlias, $on);
-
-                    foreach ($relatedMetadata->getColumns() as $column) {
-                        $select["{$joinAlias}.{$column['name']}"] = "{$joinAlias}_{$column['name']}";
-                    }
-                }
-            }
-
-            $this->select($select);
-
-            if (!is_null($conditions) && !is_array($conditions)) {
-                $primaryKey = $metadata->getPrimaryKey();
-
-                if (!isset($primaryKey)) {
-                    throw new InvalidArgumentException("Primary key does not exist");
-                }
-
-                $where["{$metadata->getAlias()}.{$primaryKey}"] = ":{$primaryKey}";
-                $parameters[$primaryKey] = $conditions;
-            } else {
-                foreach ($conditions as $key => $value) {
-                    $where["{$metadata->getAlias()}.{$key}"] = ":{$key}";
-                    $parameters[$key] = $value;
-                }
-            }
-
-            $this
-                ->where($where, $parameters);
-        }
+        match ($this->action) {
+            'select' => $this->fromMetadataSelect($metadata, $payload, $resolveMetadata, $eagerRelations),
+            'insert' => $this->fromMetadataInsert($metadata, $payload),
+            'update' => $this->fromMetadataUpdate($metadata, $payload),
+            'delete' => $this->fromMetadataDelete($metadata, $payload),
+            default => throw new RuntimeException("Unsupported action: {$this->action}")
+        };
 
         return $this;
     }
@@ -98,7 +49,7 @@ class QueryBuilder
     {
         $this->table = $this->databaseDriver->quoteIdentifier($table);
 
-        if (!empty($alias)) {
+        if ($this->action === "select" && !empty($alias)) {
             $this->table .= " AS {$this->databaseDriver->quoteIdentifier($alias)}";
         }
 
@@ -112,7 +63,7 @@ class QueryBuilder
         if (!empty($selectColumns)) {
             foreach ($selectColumns as $key => $alias) {
                 if (is_int($key)) {
-                    $this->selectColumns[] = $this->databaseDriver->quoteIdentifier($alias);
+                    $this->columns[] = $this->databaseDriver->quoteIdentifier($alias);
                     continue;
                 }
 
@@ -123,7 +74,7 @@ class QueryBuilder
                     : $this->databaseDriver->quoteIdentifier($table) . '.' . $this->databaseDriver->quoteIdentifier($column);
                 $quotedAlias = $this->databaseDriver->quoteIdentifier($alias);
 
-                $this->selectColumns[] = "{$quoted} AS {$quotedAlias}";
+                $this->columns[] = "{$quoted} AS {$quotedAlias}";
             }
         }
 
@@ -154,9 +105,9 @@ class QueryBuilder
             [$table, $column] = explode(".", "$key", 2) + [null, null];
 
             if (is_null($column)) {
-                $this->whereConditions["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;
+                $this->where["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;
             } else {
-                $this->whereConditions["{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)}"] = $value;
+                $this->where["{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)}"] = $value;
             }
         }
 
@@ -175,6 +126,12 @@ class QueryBuilder
             }, $on),
         ];
 
+        return $this;
+    }
+
+    public function values(array $data): self
+    {
+        $this->values = $data;
         return $this;
     }
 
@@ -202,10 +159,109 @@ class QueryBuilder
 
             LogHelper::query($sql, $this->parameters, $this->logger);
             $statement->execute();
+            $this->reset();
             return $statement;
         } catch (PDOException $e) {
             throw new RuntimeException("Query execution failed: {$e->getMessage()}", 0, $e);
         }
+    }
+
+    protected function reset(): void
+    {
+        $this->action = null;
+        $this->table = null;
+        $this->values = [];
+        $this->columns = [];
+        $this->where = [];
+        $this->joins = [];
+        $this->parameters = [];
+    }
+
+    protected function fromMetadataSelect(
+        MetadataEntity $metadata,
+        int|string|array|null $conditions = null,
+        ?callable $resolveMetadata = null,
+        array $eagerRelations = [],
+    ): void {
+        $select = [];
+        $where = [];
+        $parameters = [];
+
+        foreach ($metadata->getColumns() as $column) {
+            $select["{$metadata->getAlias()}.{$column["name"]}"] = "{$metadata->getColumnAlias($column["name"])}";
+        }
+
+        if ($resolveMetadata) {
+            foreach ($metadata->getRelations() as $property => $relationData) {
+                if (!in_array($property, $eagerRelations, true)) {
+                    continue;
+                }
+
+                $relation = $relationData['relation'] ?? null;
+                $joinColumn = $relationData['joinColumn'] ?? null;
+
+                if (!$relation || !$joinColumn) {
+                    continue;
+                }
+
+                $relatedMetadata = $resolveMetadata($relation->entity);
+                $joinAlias = $metadata->getRelationAlias($property);
+                $joinTable = $relatedMetadata->getTable();
+
+                $on = "{$metadata->getAlias()}.{$joinColumn->name} = {$joinAlias}.{$joinColumn->referencedColumn}";
+
+                $this->leftJoin($joinTable, $joinAlias, $on);
+
+                foreach ($relatedMetadata->getColumns() as $column) {
+                    $select["{$joinAlias}.{$column['name']}"] = "{$joinAlias}_{$column['name']}";
+                }
+            }
+        }
+
+        $this->select($select);
+
+        if (!is_null($conditions) && !is_array($conditions)) {
+            $primaryKey = $metadata->getPrimaryKey();
+
+            if (!isset($primaryKey)) {
+                throw new InvalidArgumentException("Primary key does not exist");
+            }
+
+            $where["{$metadata->getAlias()}.{$primaryKey}"] = ":{$primaryKey}";
+            $parameters[$primaryKey] = $conditions;
+        } else {
+            foreach ($conditions as $key => $value) {
+                $where["{$metadata->getAlias()}.{$key}"] = ":{$key}";
+                $parameters[$key] = $value;
+            }
+        }
+
+        $this->where($where, $parameters);
+    }
+
+    protected function fromMetadataInsert(MetadataEntity $metadata, array $data): void
+    {
+        $this->values($data);
+    }
+
+    protected function fromMetadataUpdate(MetadataEntity $metadata, array $data): void
+    {
+        $primaryKey = $metadata->getPrimaryKey();
+        $primaryValue = $data[$primaryKey] ?? null;
+
+        if ($primaryValue === null) {
+            throw new InvalidArgumentException("Missing primary key value for update");
+        }
+
+        unset($data[$primaryKey]);
+
+        $this->values($data);
+        $this->where([$primaryKey => ':id'], ['id' => $primaryValue]);
+    }
+
+    protected function fromMetadataDelete(MetadataEntity $metadata, int|string $id): void
+    {
+        $this->where([$metadata->getPrimaryKey() => ':id'], ['id' => $id]);
     }
 
     /**
@@ -221,16 +277,16 @@ class QueryBuilder
      */
     protected function getSelectSQL(): string
     {
-        $sqlParts = ["SELECT " . implode(", ", $this->selectColumns) . " FROM {$this->table}"];
+        $sqlParts = ["SELECT " . implode(", ", $this->columns) . " FROM {$this->table}"];
 
         foreach ($this->joins as $join) {
             $sqlParts[] = "{$join["type"]} JOIN {$join["table"]} AS {$join["alias"]} ON {$join['on']}";
         }
 
-        if (!empty($this->whereConditions)) {
+        if (!empty($this->where)) {
             $whereParts = [];
 
-            foreach ($this->whereConditions as $key => $value) {
+            foreach ($this->where as $key => $value) {
                 $whereParts[] = "$key = {$value}";
             }
 
@@ -242,16 +298,57 @@ class QueryBuilder
 
     protected function getInsertSQL(): string
     {
-        return "";
+        $columns = array_keys($this->values);
+        $this->parameters = $this->values;
+
+        return sprintf(
+            "INSERT INTO %s (%s) VALUES (%s)",
+            $this->table,
+            implode(', ', array_map([$this->databaseDriver, 'quoteIdentifier'], $columns)),
+            implode(', ', array_map(fn($col) => ":$col", $columns))
+        );
     }
 
     protected function getUpdateSQL(): string
     {
-        return "";
+        if (empty($this->values)) {
+            throw new RuntimeException("No values set for update.");
+        }
+
+        $setParts = [];
+        foreach ($this->values as $column => $_) {
+            $quoted = $this->databaseDriver->quoteIdentifier($column);
+            $setParts[] = "{$quoted} = :{$column}";
+        }
+
+        $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts);
+
+        if (!empty($this->where)) {
+            $whereParts = [];
+            foreach ($this->where as $key => $value) {
+                $whereParts[] = "$key = {$value}";
+            }
+            $sql .= " WHERE " . implode(" AND ", $whereParts);
+        }
+
+        $this->parameters = array_merge($this->values, $this->parameters);
+
+        return $sql;
     }
 
     protected function getDeleteSQL(): string
     {
-        return "";
+        $sql = "DELETE FROM {$this->table}";
+
+        if (!empty($this->where)) {
+            $whereParts = [];
+            foreach ($this->where as $key => $value) {
+                $whereParts[] = "$key = {$value}";
+            }
+
+            $sql .= " WHERE " . implode(" AND ", $whereParts);
+        }
+
+        return $sql;
     }
 }

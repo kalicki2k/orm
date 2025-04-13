@@ -3,6 +3,7 @@
 namespace ORM\Stream\Format;
 
 use InvalidArgumentException;
+use ORM\Entity\EntityBase;
 use SimpleXMLElement;
 
 /**
@@ -43,9 +44,17 @@ class XmlFormatWriter implements FormatWriter
             throw new InvalidArgumentException("Entity must be an object.");
         }
 
-        $data = get_object_vars($entity);
-        $xml = new SimpleXMLElement('<entity/>');
+        if (!is_subclass_of($entity, EntityBase::class)) {
+            throw new InvalidArgumentException("Entity must extend EntityBase.");
+        }
 
+        $data = $entity->jsonSerialize();
+
+        if (!is_array($data) || empty($data)) {
+            return '';
+        }
+
+        $xml = new SimpleXMLElement('<entity/>');
         $this->arrayToXml($data, $xml);
 
         return $xml->asXML();

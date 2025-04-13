@@ -5,6 +5,8 @@ namespace ORM\Util;
 use ORM\Entity\EntityBase;
 use ReflectionClass;
 use ReflectionException;
+use ReflectionNamedType;
+use ReflectionProperty;
 
 /**
  * A singleton utility for caching ReflectionClass instances.
@@ -19,7 +21,10 @@ final class ReflectionCacheInstance
      *
      * @var array<string, ReflectionClass>
      */
-    private array $cache = [];
+    private array $classCache = [];
+
+    private array $propertyCache = [];
+    private array $typeCache = [];
 
     /**
      * The singleton instance of ReflectionCacheInstance.
@@ -51,9 +56,54 @@ final class ReflectionCacheInstance
     public function get(EntityBase|string $class): ReflectionClass
     {
         $className = $class instanceof EntityBase ? $class::class : $class;
-        if (!isset($this->cache[$className])) {
-            $this->cache[$className] = new ReflectionClass($className);
+        if (!isset($this->classCache[$className])) {
+            $this->classCache[$className] = new ReflectionClass($className);
         }
-        return $this->cache[$className];
+        return $this->classCache[$className];
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function getProperty(string $class, string $property): ReflectionProperty
+    {
+        if (!isset($this->propertyCache[$class][$property])) {
+            $reflectionClass = $this->get($class);
+            $reflectionProperty = $reflectionClass->getProperty($property);
+            $this->propertyCache[$class][$property] = $reflectionProperty;
+        }
+
+        return $this->propertyCache[$class][$property];
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function getType(string $class, string $property): ?ReflectionNamedType
+    {
+        if (!isset($this->typeCache[$class][$property])) {
+            $prop = $this->getProperty($class, $property);
+            $this->typeCache[$class][$property] = $prop->getType() instanceof ReflectionNamedType
+                ? $prop->getType()
+                : null;
+        }
+
+        return $this->typeCache[$class][$property];
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function getValue(object $object, string $property): mixed
+    {
+        return $this->getProperty($object::class, $property)->getValue($object);
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function setValue(object $object, string $property, mixed $value): void
+    {
+        $this->getProperty($object::class, $property)->setValue($object, $value);
     }
 }

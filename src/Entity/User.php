@@ -10,6 +10,7 @@ use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
 use ORM\Entity\EntityBase;
+use ORM\Entity\Type\CascadeType;
 
 #[Entity]
 #[Table("users")]
@@ -26,7 +27,7 @@ class User extends EntityBase
     #[Column(type: "string", length: 255, nullable: false)]
     private string $email;
 
-    #[OneToOne(entity: Profile::class)]
+    #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
     #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
     private Profile $profile;
 

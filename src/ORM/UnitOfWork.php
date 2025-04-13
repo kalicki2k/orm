@@ -2,306 +2,194 @@
 
 namespace ORM;
 
-use ORM\Logger\LogHelper;
-use ORM\Util\ReflectionCache;
-use Ramsey\Uuid\Uuid;
+use ORM\Drivers\DatabaseDriver;
+use ORM\Entity\EntityBase;
+use ORM\Entity\Type\CascadeType;
+use ORM\Metadata\MetadataParser;
+use ORM\Query\QueryBuilder;
+use ORM\Util\ReflectionCacheInstance;
+use Psr\Log\LoggerInterface;
 use ReflectionException;
+use RuntimeException;
+use WeakMap;
 
-/**
- * Class UnitOfWork
- *
- * Manages persistence operations for entities such as inserts, updates, and deletes.
- * Collects changes and executes them in a single transaction-like operation via `commit()`.
- */
 class UnitOfWork
 {
-    /** @var array<object> Entities scheduled for insert */
-    private array $newEntities = [];
+    private WeakMap $scheduledForInsert;
+    private WeakMap $scheduledForUpdate;
+    private WeakMap $scheduledForDelete;
 
-    /** @var array<object> Entities scheduled for update */
-    private array $updatedEntities = [];
-
-    /** @var array<object> Entities scheduled for deletion */
-    private array $removedEntities = [];
-
-    /** @var array<string, object> Identity map for preventing duplicate hydration */
-    private array $identityMap = [];
-
-    /**
-     * UnitOfWork constructor.
-     *
-     * @param EntityManager $entityManager The associated entity manager
-     */
-    public function __construct(private readonly EntityManager $entityManager) {}
+    public function __construct(
+        private readonly DatabaseDriver $databaseDriver,
+        private readonly MetadataParser $metadataParser,
+        private readonly ?LoggerInterface $logger = null,
+    ) {
+        $this->scheduledForInsert = new WeakMap();
+        $this->scheduledForUpdate = new WeakMap();
+        $this->scheduledForDelete = new WeakMap();
+    }
 
     /**
-     * Schedules an entity for insertion on flush.
-     *
-     * @param object $entity The entity to insert.
+     * @throws ReflectionException
      */
-    public function scheduleInsert(object $entity): void
+    public function scheduleForInsert(EntityBase $entity): void
     {
-        if (!in_array($entity, $this->newEntities, true)) {
-            $this->newEntities[] = $entity;
+        if (isset($this->scheduledForInsert[$entity])) {
+            return;
         }
+
+        $this->scheduledForInsert[$entity] = true;
+        $this->handleCascades($entity, CascadeType::Persist);
     }
 
-    /**
-     * Schedules an entity for update on flush.
-     *
-     * @param object $entity The entity to update.
-     */
-    public function scheduleUpdate(object $entity): void
+    public function scheduleForUpdate(EntityBase $entity): void
     {
-        $this->updatedEntities[] = $entity;
+        if (isset($this->scheduledForUpdate[$entity])) {
+            return;
+        }
+
+        [$_, $data] = $this->getMetadata($entity);
+
+        if (!$entity->__isDirty($data)) {
+            return;
+        }
+
+        $this->scheduledForUpdate[$entity] = true;
     }
 
     /**
-     * Schedules an entity for deletion on flush.
-     *
-     * @param object $entity The entity to delete.
+     * @throws ReflectionException
      */
-    public function scheduleDelete(object $entity): void
+    public function scheduleForDelete(EntityBase $entity): void
     {
-        $this->removedEntities[] = $entity;
+        if (isset($this->scheduledForDelete[$entity])) {
+            return;
+        }
+
+        if (!$entity->__isPersisted()) {
+            return;
+        }
+
+        $this->scheduledForDelete[$entity] = true;
+        $this->handleCascades($entity, CascadeType::Remove);
     }
 
     /**
-     * Executes all scheduled changes (insert, update, delete) in order.
+     * @throws ReflectionException
      */
     public function commit(): void
     {
-        foreach ($this->removedEntities as $entity) {
-            $this->commitDelete($entity);
+        foreach ($this->scheduledForDelete as $entity => $_) {
+            $this->executeDelete($entity);
         }
 
-        foreach ($this->updatedEntities as $entity) {
-            $this->commitUpdate($entity);
+        foreach ($this->scheduledForInsert as $entity => $_) {
+            $this->executeInsert($entity);
         }
 
-        foreach ($this->newEntities as $entity) {
-            $this->commitInsert($entity);
+        foreach ($this->scheduledForUpdate as $entity => $_) {
+            $this->executeUpdate($entity);
         }
 
         $this->clear();
     }
 
-    /**
-     * Returns an entity from the identity map if it exists.
-     *
-     * @param string $class The fully qualified class name.
-     * @param string|int $id The entity ID.
-     * @return object|null
-     */
-    public function getFormIdentityMap(string $class, string|int $id): ?object
-    {
-        return $this->identityMap["{$class}:{$id}"] ?? null;
-    }
-
-    /**
-     * Stores an entity in the identity map.
-     *
-     * @param string $class The class name.
-     * @param string|int $id The entity ID.
-     * @param object $entity The entity instance.
-     */
-    public function storeInIdentityMap(string $class, string|int $id, object $entity): void
-    {
-        $this->identityMap["{$class}:{$id}"] = $entity;
-    }
-
-    private function applyGeneratedPrimaryKey(object $entity, array $columns): void
-    {
-        foreach ($columns as $property => $column) {
-            if (
-                ($column["primary"] ?? false) &&
-                ($column["type"] === "uuid") &&
-                empty($entity->$property)
-            ) {
-                $entity->$property = Uuid::uuid4()->toString();
-            }
-        }
-    }
-
-    private function assignAutoIncrementId(object $entity, array $columns, string $table): void
-    {
-        foreach ($columns as $property => $column) {
-            if (($column["primary"] ?? false) && ($column["autoIncrement"] ?? false)) {
-                $id = $this->entityManager->getDatabaseDriver()->lastInsertId($table, $column["column"]);
-                $entity->$property = is_numeric($id) ? (int)$id : $id;
-            }
-        }
-    }
-
-
-    /**
-     * Performs an INSERT SQL operation for a new entity.
-     *
-     * @param object $entity The new entity to insert.
-     * @throws ReflectionException
-     */
-    private function commitInsert(object $entity): void
-    {
-        [$table, $columns] = $this->entityManager->getMetadata($entity);
-        [$fields, $placeholders, $values] = $this->buildInsertParts($entity, $columns);
-
-        $sql = sprintf(
-            "INSERT INTO %s (%s) VALUES (%s)",
-            $this->entityManager->getDatabaseDriver()->quoteIdentifier($table),
-            implode(", ", $fields),
-            implode(", ", $placeholders)
-        );
-
-        $this->execute($sql, $values);
-        $this->assignAutoIncrementId($entity, $columns, $table);
-    }
-
-    /**
-     * Performs an UPDATE SQL operation for a modified entity.
-     *
-     * @param object $entity The entity to update.
-     * @throws ReflectionException
-     */
-    private function commitUpdate(object $entity): void
-    {
-        [$table, $columns] = $this->entityManager->getMetadata($entity);
-
-        $assignments = [];
-        $conditions = [];
-        $values = [];
-
-        foreach ($columns as $property => $column) {
-            $columnName = $column['column'];
-            $quoted = $this->entityManager->getDatabaseDriver()->quoteIdentifier($columnName);
-
-            if ($column['primary']) {
-                $conditions[] = "{$quoted} = :pk_{$columnName}";
-                $values[":pk_{$columnName}"] = $entity->$property;
-            } else {
-                $assignments[] = "{$quoted} = :{$columnName}";
-                $values[":{$columnName}"] = $entity->$property;
-            }
-        }
-
-        if (empty($conditions)) {
-            throw new \RuntimeException("Cannot update entity without primary key.");
-        }
-
-        $sql = sprintf(
-            "UPDATE %s SET %s WHERE %s",
-            $this->entityManager->getDatabaseDriver()->quoteIdentifier($table),
-            implode(", ", $assignments),
-            implode(" AND ", $conditions)
-        );
-
-        $this->execute($sql, $values);
-    }
-
-    /**
-     * Performs a DELETE SQL operation for a removed entity.
-     *
-     * @param object $entity The entity to delete.
-     * @throws ReflectionException
-     */
-    private function commitDelete(object $entity): void
-    {
-        [$table, $columns] = $this->entityManager->getMetadata($entity);
-
-        $conditions = [];
-        $values = [];
-
-        foreach ($columns as $property => $column) {
-            if ($column['primary']) {
-                $columnName = $column['column'];
-                $quoted = $this->entityManager->getDatabaseDriver()->quoteIdentifier($columnName);
-                $conditions[] = "{$quoted} = :{$columnName}";
-                $values[":{$columnName}"] = $entity->$property;
-            }
-        }
-
-        if (empty($conditions)) {
-            throw new \RuntimeException("Cannot delete entity without primary key.");
-        }
-
-        $sql = sprintf(
-            "DELETE FROM %s WHERE %s",
-            $this->entityManager->getDatabaseDriver()->quoteIdentifier($table),
-            implode(" AND ", $conditions)
-        );
-        $this->execute($sql, $values);
-    }
-
-    /**
-     * Generates insert query components: fields, placeholders, and bound values.
-     *
-     * @param object $entity The entity to insert.
-     * @param array $columns Metadata array of columns
-     * @return array Tuple: [fields[], placeholders[], values]
-     * @throws ReflectionException
-     */
-    private function buildInsertParts(object $entity, array $columns): array
-    {
-        $reflectionClass = ReflectionCache::get($entity);
-
-        $fields = [];
-        $placeholders = [];
-        $values = [];
-
-        $this->applyGeneratedPrimaryKey($entity, $columns);
-
-        foreach ($columns as $property => $column) {
-            if (!empty($column["autoIncrement"])) {
-                continue;
-            }
-
-            $field = $this->entityManager->getDatabaseDriver()->quoteIdentifier($column["column"]);
-            $reflectionProperty = $reflectionClass->getProperty($property);
-
-            if (!$reflectionProperty->isInitialized($entity)) {
-                // Handle uninitialized nullable or defaulted properties
-                if (!empty($column["nullable"])) {
-                    $fields[] = $field;
-                    $placeholders[] = ":{$column["column"]}";
-                    $values[":{$column["column"]}"] = null;
-                } elseif (array_key_exists("default", $column)) {
-                    $fields[] = $field;
-                    $placeholders[] = ":{$column["column"]}";
-                    $values[":{$column["column"]}"] = $column["default"];
-                }
-                continue;
-            }
-
-            $fields[] = $field;
-            $placeholders[] = ":{$column["column"]}";
-            $values[":{$column["column"]}"] = $entity->$property;
-        }
-
-        return [$fields, $placeholders, $values];
-    }
-
-    /**
-     * Clears all internal buffers after commit.
-     */
     private function clear(): void
     {
-        $this->newEntities = [];
-        $this->updatedEntities = [];
-        $this->removedEntities = [];
-        $this->identityMap = [];
+        $this->scheduledForInsert = new WeakMap();
+        $this->scheduledForUpdate = new WeakMap();
+        $this->scheduledForDelete = new WeakMap();
     }
 
     /**
-     * Executes a SQL statement with parameter binding and logging.
-     *
-     * @param string $sql
-     * @param array $values
+     * @throws ReflectionException
      */
-    private function execute(string $sql, array $values): void
+    private function executeInsert(EntityBase $entity): void
     {
-        LogHelper::query($sql, $values, $this->entityManager->getLogger());
+        [$metadata, $data] = $this->getMetadata($entity, true);
 
-        $statement = $this->entityManager->getDatabaseDriver()->prepare($sql);
-        $this->entityManager->bindParameters($statement, $values);
-        $statement->execute();
+        $lastInsertId = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->insert()
+            ->fromMetadata($metadata, $data)
+            ->execute();
+
+        $reflection = ReflectionCacheInstance::getInstance()
+            ->get($entity)
+            ->getProperty($metadata->getPrimaryKey());
+        $reflection->setValue($entity, $lastInsertId);
+
+        $entity->__markPersisted($this->metadataParser->extract($entity));
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function executeUpdate(EntityBase $entity): void
+    {
+        [$metadata, $data] = $this->getMetadata($entity);
+
+        new QueryBuilder($this->databaseDriver, $this->logger)
+            ->update()
+            ->fromMetadata($metadata, $data)
+            ->execute();
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function executeDelete(EntityBase $entity): void
+    {
+        [$metadata, $data] = $this->getMetadata($entity);
+        $id = $data[$metadata->getPrimaryKey()];
+
+        if ($id === null) {
+            throw new RuntimeException("Cannot delete entity without identifier.");
+        }
+
+        new QueryBuilder($this->databaseDriver, $this->logger)->delete()->fromMetadata($metadata, $id)->execute();
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function getMetadata(EntityBase $entity, bool $excludePrimaryKey = false): array
+    {
+        return [
+            $this->metadataParser->parse($entity::class),
+            $this->metadataParser->extract($entity, $excludePrimaryKey),
+        ];
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function handleCascades(EntityBase $entity, CascadeType $action): void
+    {
+        $metadata = $this->metadataParser->parse($entity::class);
+        $reflection = ReflectionCacheInstance::getInstance()->get($entity);
+
+        foreach ($metadata->getRelations() as $property => $relationInfo) {
+            $propertyRef = $reflection->getProperty($property);
+
+            if (!$propertyRef->isInitialized($entity)) {
+                continue;
+            }
+
+            $cascade = $relationInfo["relation"]->cascade ?? [];
+            $relatedEntity = $propertyRef->getValue($entity);
+
+            if (!($relatedEntity instanceof EntityBase)) {
+                continue;
+            }
+
+            if (!in_array($action, $cascade, true)) {
+                continue;
+            }
+
+            match ($action) {
+                CascadeType::Persist => $this->scheduleForInsert($relatedEntity),
+                CascadeType::Remove => $this->scheduleForDelete($relatedEntity),
+            };
+        }
     }
 }

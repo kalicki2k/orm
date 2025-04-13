@@ -2,6 +2,7 @@
 
 namespace ORM\Util;
 
+use ORM\Entity\EntityBase;
 use ReflectionClass;
 use ReflectionException;
 
@@ -43,13 +44,13 @@ final class ReflectionCacheInstance
     /**
      * Returns a cached ReflectionClass instance for a given class name or object.
      *
-     * @param object|string $class The class name or an object instance.
+     * @param EntityBase|string $class The class name or an EntityBase instance.
      * @return ReflectionClass
      * @throws ReflectionException If the class does not exist.
      */
-    public function get(object|string $class): ReflectionClass
+    public function get(EntityBase|string $class): ReflectionClass
     {
-        $className = is_object($class) ? $class::class : $class;
+        $className = $class instanceof EntityBase ? $class::class : $class;
         if (!isset($this->cache[$className])) {
             $this->cache[$className] = new ReflectionClass($className);
         }

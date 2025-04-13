@@ -3,6 +3,9 @@
 namespace ORM\Stream\Format;
 
 use InvalidArgumentException;
+use ORM\Entity\EntityBase;
+use ORM\Util\ReflectionCacheInstance;
+use ReflectionException;
 
 /**
  * CSVFormatWriter serializes entities into CSV format.
@@ -38,6 +41,7 @@ class CSVFormatWriter implements FormatWriter
      * @return string The CSV representation of the entity, including the header on the first call.
      *
      * @throws InvalidArgumentException if the entity is not an object.
+     * @throws ReflectionException
      *
      * @example
      * // Given an entity with properties "id", "username", "email":
@@ -50,8 +54,17 @@ class CSVFormatWriter implements FormatWriter
             throw new InvalidArgumentException("Entity must be an object.");
         }
 
-        $data = get_object_vars($entity);
+        if (!is_subclass_of($entity, EntityBase::class)) {
+            throw new InvalidArgumentException("Entity must extend EntityBase.");
+        }
+
+        $reflection = ReflectionCacheInstance::getInstance()->get($entity);
         $csvRow = '';
+        $data = [];
+
+        foreach ($reflection->getProperties() as $property) {
+            $data[$property->getName()] = $property->isInitialized($entity) ? $property->getValue($entity) : null;
+        }
 
         if (!$this->headerWritten) {
             $header = array_keys($data);

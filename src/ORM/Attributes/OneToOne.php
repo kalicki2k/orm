@@ -25,11 +25,12 @@ class OneToOne
     /**
      * @param string $entity The target entity class name.
      * @param string|null $mappedBy The property name in the target entity that owns the relationship (inverse side).
-     * @param string|null $inversedBy The property name in the target entity that maps back to this one (owning side).
+//     * @param string|null $inversedBy The property name in the target entity that maps back to this one (owning side).
      */
     public function __construct(
         public string $entity,
         public ?string $mappedBy = null,
-        public ?string $inversedBy = null,
+//        public ?string $inversedBy = null,
+        public array $cascade = [],
     ) {}
 }

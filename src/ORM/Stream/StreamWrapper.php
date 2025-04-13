@@ -2,11 +2,12 @@
 
 namespace ORM\Stream;
 
+use DateMalformedStringException;
 use InvalidArgumentException;
-use JsonSerializable;
 use ORM\Drivers\PDODriver;
-use ORM\EntityManager;
+use ORM\Entity\EntityManager;
 use ORM\Logger\LoggerFactory;
+use ORM\Metadata\MetadataParser;
 use ORM\Stream\Format\CSVFormatWriter;
 use ORM\Stream\Format\FormatWriter;
 use ORM\Stream\Format\JsonFormatWriter;
@@ -121,12 +122,12 @@ class StreamWrapper
      *
      * @return bool True on success
      *
-     * @throws ReflectionException
+     * @throws ReflectionException|DateMalformedStringException
      */
     public function stream_open(string $path, string $mode, int $options, ?string &$opened_path): bool
     {
         $this->mode = $mode;
-        $this->entityManager = new EntityManager(PDODriver::default(), LoggerFactory::create());
+        $this->entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
 
         $parsed = parse_url($path);
         $this->entity = ltrim($parsed["host"] ?? "", "/");
@@ -140,8 +141,9 @@ class StreamWrapper
             parse_str($parsed["query"], $this->criteria);
         }
 
-        $format = $this->criteria['format'] ?? 'json';
+        $format = $this->criteria["format"] ?? "json";
         $this->formatWriter = $this->getFormatWriter($format);
+        unset($this->criteria["format"]);
 
         $this->generator = !empty($this->criteria)
             ? $this->entityManager->streamBy($this->entity, $this->criteria)
@@ -207,7 +209,7 @@ class StreamWrapper
      * @return int Number of bytes written (equals strlen($data))
      *
      * @throws InvalidArgumentException If the input JSON is invalid or the entity class is not found.
-     * @throws ReflectionException If metadata parsing fails during entity hydration.
+     * @throws ReflectionException|DateMalformedStringException If metadata parsing fails during entity hydration.
      *
      * @example
      * // Insert new user (append mode or no primary key provided)
@@ -225,50 +227,52 @@ class StreamWrapper
      * @see EntityManager::update()
      * @see EntityManager::flush()
      */
-    public function stream_write(string $data): int
-    {
-        $decoded = json_decode($data, true);
+public function stream_write(string $data): int
+{
+    $decoded = json_decode($data, true);
 
-        if (!is_array($decoded)) {
-            trigger_error("Invalid JSON input for update", E_USER_WARNING);
-            return 0;
-        }
+    if (!is_array($decoded)) {
+        trigger_error("Invalid JSON input for write", E_USER_WARNING);
+        return 0;
+    }
 
-        $entityClass = $this->entity;
-        if (!class_exists($entityClass)) {
-            trigger_error("Unknown entity class: {$entityClass}", E_USER_WARNING);
-            return 0;
-        }
+    $entityClass = $this->entity;
+    if (!class_exists($entityClass)) {
+        trigger_error("Unknown entity class: {$entityClass}", E_USER_WARNING);
+        return 0;
+    }
 
-        $entity = new $entityClass();
-        [$_, $columns] = $this->entityManager->getMetadata($entityClass);
-        $primaryKeyField = $this->entityManager->getPrimaryKeyColumn($columns);
+    $entity = new $entityClass();
 
-        foreach ($decoded as $key => $value) {
-            $entity->$key = $value;
-        }
+    foreach ($decoded as $key => $value) {
+        $entity->$key = $value;
+    }
 
-        if ($this->mode === 'a' || $this->mode === 'x') {
-            if ($this->mode === 'x' && !empty($primaryKeyField) && !empty($decoded[$primaryKeyField])) {
-                $existing = $this->entityManager->find($entityClass, [$primaryKeyField => $decoded[$primaryKeyField]]);
-                if ($existing) {
-                    trigger_error("Entity already exists", E_USER_WARNING);
-                    return 0;
-                }
+    $metadata = $this->entityManager->getMetadata($entityClass);
+    $primaryKeyField = $metadata->getPrimaryKey();
+
+    if ($this->mode === 'a' || $this->mode === 'x') {
+        if ($this->mode === 'x' && !empty($primaryKeyField) && !empty($decoded[$primaryKeyField])) {
+            $existing = $this->entityManager->findBy($entityClass, [$primaryKeyField => $decoded[$primaryKeyField]]);
+            if ($existing) {
+                trigger_error("Entity already exists", E_USER_WARNING);
+                return 0;
             }
+        }
+        $this->entityManager->persist($entity);
+    } else {
+        if (empty($primaryKeyField) || empty($decoded[$primaryKeyField])) {
             $this->entityManager->persist($entity);
         } else {
-            if (empty($primaryKeyField) || empty($decoded[$primaryKeyField])) {
-                $this->entityManager->persist($entity);
-            } else {
-                $this->entityManager->update($entity);
-            }
+            $this->entityManager->update($entity);
         }
-
-        $this->entityManager->flush();
-
-        return strlen($data);
     }
+
+    $this->entityManager->flush();
+
+    return strlen($data);
+}
+
 
     /**
      * Checks if the end of stream has been reached.
@@ -325,7 +329,7 @@ class StreamWrapper
         parse_str($parsed["query"] ?? "", $params);
 
         $entityManager = new EntityManager(PDODriver::default(), LoggerFactory::create());
-        $entity = $entityManager->find($entityClass, $params);
+        $entity = $entityManager->findBy($entityClass, $params);
 
         if (!$entity) {
             trigger_error("Entity not found for deletion", E_USER_WARNING);

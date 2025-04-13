@@ -4,9 +4,9 @@ This is a lightweight, attribute-driven ORM built for PHP 8.4+ that maps PHP cla
 
 ---
 
-## Features
+## ✨ Features
 
-✅ Attribute-based entity mapping  
+✅ Modern attribute-based entity definitions  
 ✅ Support for insert, update, delete, find, findAll, findBy, findOneBy, streamAll, and streamBy  
 ✅ Unit of Work pattern for efficient batching  
 ✅ Identity map to avoid duplicate hydration  
@@ -17,37 +17,34 @@ This is a lightweight, attribute-driven ORM built for PHP 8.4+ that maps PHP cla
 
 ---
 
-## Installation
+## 🧱 Installation
 
 ```bash
 composer install
 ```
 
-Make sure your `.env` file includes:
+`.env` configuration:
 
 ```env
 DB_DSN=mysql:host=localhost;dbname=orm
 DB_USER=root
 DB_PASSWORD=secret
-APP_ENV=dev
 ```
 
 ---
 
-## Usage Example
-
-### Setup
+## 🔧 Setup
 
 ```php
-use ORM\EntityManager;
-use ORM\Drivers\PDODriver;
-use ORM\Logger\LoggerFactory;
+use ORM\Drivers\PDODriver;use ORM\Entity\EntityManager;use ORM\Logger\LoggerFactory;
 
 $driver = PDODriver::fromEnv();
 $entityManager = new EntityManager($driver, LoggerFactory::create());
 ```
 
-### Example Entity
+---
+
+## 👤 Example Entity
 
 ```php
 #[Table(name: "users")]
@@ -70,7 +67,11 @@ class User implements JsonSerializable {
 }
 ```
 
-### Insert
+---
+
+## 🔄 CRUD Operations
+
+### Create
 
 ```php
 $user = new User();
@@ -99,12 +100,12 @@ $entityManager->flush();
 ### Find
 
 ```php
-$user = $entityManager->find(User::class, 1);
+$user = $entityManager->findBy(User::class, 1);
 ```
 
 ---
 
-## Stream Wrapper Usage
+## 📡 StreamWrapper Usage
 
 ```php
 stream_wrapper_register("orm", ORM\Stream\StreamWrapper::class);
@@ -127,7 +128,19 @@ unlink("orm://Entity\\User?id=1");
 
 ---
 
-## Requirements
+## 📦 Architecture Overview
+
+- `EntityManager` – central ORM controller  
+- `UnitOfWork` – tracks object changes and manages transactions  
+- `MetadataParser` – reads PHP attributes and converts them to metadata  
+- `QueryBuilder` – fluent API for custom queries  
+- `EntityBase` – shared entity base  
+- `CascadeType` – control over cascading behavior  
+- `ReflectionCache` – improves performance by caching reflection data
+
+---
+
+## 🧪 Requirements
 
 - PHP 8.4+
 - PDO extension
@@ -135,7 +148,7 @@ unlink("orm://Entity\\User?id=1");
 
 ---
 
-## TODO / Ideas
+## 🛠 TODO / Ideas
 
 - [ ] Add support for relations (OneToOne, OneToMany, etc.)
 - [ ] Lazy loading with proxy/lazy-object support (PHP 8.4)
@@ -152,7 +165,7 @@ unlink("orm://Entity\\User?id=1");
 
 ---
 
-## License
+## 📄 License
 
 MIT
 

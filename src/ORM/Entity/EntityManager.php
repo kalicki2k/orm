@@ -4,15 +4,16 @@ namespace ORM\Entity;
 
 use DateMalformedStringException;
 use DateTimeImmutable;
+use Generator;
 use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
 use ORM\Query\QueryBuilder;
+use ORM\UnitOfWork;
 use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
-use RuntimeException;
 
 /**
  * The central access point for ORM operations on entities.
@@ -20,6 +21,8 @@ use RuntimeException;
  * The EntityManager handles querying, persisting, and retrieving entity objects.
  */
 readonly class EntityManager {
+    private UnitOfWork $unitOfWork;
+
     /**
      * EntityManager constructor.
      *
@@ -31,46 +34,87 @@ readonly class EntityManager {
         private DatabaseDriver $databaseDriver,
         private MetadataParser $metadataParser,
         private ?LoggerInterface $logger = null,
-    ) {}
-
-    /**
-     * @throws ReflectionException
-     */
-    public function persist(EntityBase $entity): self
-    {
-        $metadata = $this->metadataParser->parse($entity::class);
-        $data = $this->metadataParser->extract($entity, true);
-
-        new QueryBuilder($this->databaseDriver, $this->logger)->insert()->fromMetadata($metadata, $data)->execute();
-
-        return $this;
+    ) {
+        $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->logger);
     }
 
     /**
      * @throws ReflectionException
      */
-    public function update(EntityBase $entity): self
+    public function persist(EntityBase|array $entity): self
     {
-        $metadata = $this->metadataParser->parse($entity::class);
-        $data = $this->metadataParser->extract($entity);
-
-        new QueryBuilder($this->databaseDriver, $this->logger)->update()->fromMetadata($metadata, $data)->execute();
-
-        return $this;
-    }
-
-    public function delete(EntityBase $entity): self
-    {
-        $metadata = $this->metadataParser->parse($entity::class);
-        $data = $this->metadataParser->extract($entity);
-        $id = $data[$metadata->getPrimaryKey()];
-
-        if ($id === null) {
-            throw new RuntimeException("Cannot delete entity without identifier.");
+        if (is_array($entity)) {
+            foreach ($entity as $value) {
+                if (!($value instanceof EntityBase)) {
+                    throw new InvalidArgumentException("Expected instance of EntityBase.");
+                }
+                $this->persist($value);
+            }
+            return $this;
         }
 
-        new QueryBuilder($this->databaseDriver, $this->logger)->delete()->fromMetadata($metadata, $id)->execute();
+        $this->unitOfWork->scheduleForInsert($entity);
         return $this;
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function update(EntityBase|array $entity): self
+    {
+        if (is_array($entity)) {
+            foreach ($entity as $value) {
+                if (!($value instanceof EntityBase)) {
+                    throw new InvalidArgumentException("Expected instance of EntityBase.");
+                }
+                $this->update($value);
+            }
+            return $this;
+        }
+
+        $this->unitOfWork->scheduleForUpdate($entity);
+        return $this;
+    }
+
+    public function delete(EntityBase|array $entity): self
+    {
+        if (is_array($entity)) {
+            foreach ($entity as $value) {
+                if (!($value instanceof EntityBase)) {
+                    throw new InvalidArgumentException("Expected instance of EntityBase.");
+                }
+                $this->delete($value);
+            }
+            return $this;
+        }
+
+        $this->unitOfWork->scheduleForDelete($entity);
+        return $this;
+    }
+
+    /**
+     * @throws ReflectionException
+     * @throws DateMalformedStringException
+     */
+    public function findAll(string $entityName, array $relations = []): array
+    {
+        $metadata = $this->getMetadata($entityName);
+        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->select()
+            ->fromMetadata(
+                $metadata,
+                [],
+                fn(string $class) => $this->getMetadata($class),
+                $relations
+            )
+            ->execute();
+
+        $results = [];
+        while ($row = $statement->fetch()) {
+            $results[] = $this->hydrateEntity($metadata, $row);
+        }
+
+        return $results;
     }
 
     /**
@@ -85,7 +129,7 @@ readonly class EntityManager {
      * @throws DateMalformedStringException
      * @throws ReflectionException
      */
-    public function find(string $entityName, int|string|array|null $conditions = null, array $relations = []): ?object
+    public function findBy(string $entityName, int|string|array|null $conditions = null, array $relations = []): ?object
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
@@ -108,6 +152,58 @@ readonly class EntityManager {
     }
 
     /**
+     * @throws ReflectionException
+     * @throws DateMalformedStringException
+     */
+    public function streamAll(string $entityName, array $relations = []): Generator
+    {
+        $metadata = $this->getMetadata($entityName);
+        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->select()
+            ->fromMetadata(
+                $metadata,
+                [],
+                fn(string $class) => $this->getMetadata($class),
+                $relations
+            )
+            ->execute();
+
+        while ($row = $statement->fetch()) {
+            yield $this->hydrateEntity($metadata, $row);
+        }
+    }
+
+    /**
+     * @throws ReflectionException
+     * @throws DateMalformedStringException
+     */
+    public function streamBy(string $entityName, array $criteria = [], array $relations = []): Generator
+    {
+        $metadata = $this->getMetadata($entityName);
+        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->select()
+            ->fromMetadata(
+                $metadata,
+                $criteria,
+                fn(string $class) => $this->getMetadata($class),
+                $relations
+            )
+            ->execute();
+
+        while ($row = $statement->fetch()) {
+            yield $this->hydrateEntity($metadata, $row);
+        }
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function flush(): void
+    {
+        $this->unitOfWork->commit();
+    }
+
+    /**
      * Retrieves the parsed metadata for a given entity class.
      *
      * @param string $entityName The fully qualified class name of the entity.
@@ -116,7 +212,7 @@ readonly class EntityManager {
      *
      * @throws ReflectionException
      */
-    protected function getMetadata(string $entityName): MetadataEntity
+    public function getMetadata(string $entityName): MetadataEntity
     {
         return $this->metadataParser->parse($entityName);
     }
@@ -125,7 +221,7 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    protected function hydrateEntity(MetadataEntity $metadata, array $data): object
+    private function hydrateEntity(MetadataEntity $metadata, array $data): object
     {
         $reflection = ReflectionCacheInstance::getInstance()->get($metadata->getEntityName());
         $entity = $reflection->newInstanceWithoutConstructor();
@@ -149,13 +245,15 @@ readonly class EntityManager {
             }
         }
 
+        $entity->__takeSnapshot($this->metadataParser->extract($entity));
+
         return $entity;
     }
 
     /**
      * @throws DateMalformedStringException
      */
-    protected function hydrateColumn(mixed $value, ?string $type = null): mixed
+    private function hydrateColumn(mixed $value, ?string $type = null): mixed
     {
         if (!isset($type)) {
             return $value;
@@ -175,7 +273,7 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    protected function hydrateRelation(
+    private function hydrateRelation(
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,

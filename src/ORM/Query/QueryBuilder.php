@@ -146,7 +146,7 @@ class QueryBuilder
         };
     }
 
-    public function execute(): Statement
+    public function execute(): int|Statement
     {
         try {
             $sql = $this->getSQL();
@@ -159,6 +159,14 @@ class QueryBuilder
 
             LogHelper::query($sql, $this->parameters, $this->logger);
             $statement->execute();
+
+            if ($this->action === "insert") {
+                $lastInsertId = $this->databaseDriver->lastInsertId();
+                $this->reset();
+
+                return $lastInsertId;
+            }
+
             $this->reset();
             return $statement;
         } catch (PDOException $e) {
@@ -197,26 +205,44 @@ class QueryBuilder
                     continue;
                 }
 
-                $relation = $relationData['relation'] ?? null;
-                $joinColumn = $relationData['joinColumn'] ?? null;
-
-                if (!$relation || !$joinColumn) {
+                $relation = $relationData['relation'];
+                if (!$relation) {
                     continue;
                 }
 
                 $relatedMetadata = $resolveMetadata($relation->entity);
                 $joinAlias = $metadata->getRelationAlias($property);
                 $joinTable = $relatedMetadata->getTable();
+                $on = null;
 
-                $on = "{$metadata->getAlias()}.{$joinColumn->name} = {$joinAlias}.{$joinColumn->referencedColumn}";
+                // Inverse side
+                if (!empty($relation->mappedBy)) {
+                    $owningSide = $relatedMetadata->getRelations()[$relation->mappedBy];
+                    $joinColumn = $owningSide["joinColumn"];
 
-                $this->leftJoin($joinTable, $joinAlias, $on);
+                    if ($joinColumn) {
+                        $on = "{$joinAlias}.{$joinColumn->name} = {$metadata->getAlias()}.{$joinColumn->referencedColumn}";
+                    }
 
-                foreach ($relatedMetadata->getColumns() as $column) {
-                    $select["{$joinAlias}.{$column['name']}"] = "{$joinAlias}_{$column['name']}";
+                // Owning side
+                } else {
+                    $joinColumn = $relationData["joinColumn"];
+
+                    if ($joinColumn) {
+                        $on = "{$metadata->getAlias()}.{$joinColumn->name} = {$joinAlias}.{$joinColumn->referencedColumn}";
+                    }
+                }
+
+                if ($on) {
+                    $this->leftJoin($joinTable, $joinAlias, $on);
+
+                    foreach ($relatedMetadata->getColumns() as $column) {
+                        $select["{$joinAlias}.{$column["name"]}"] = "{$joinAlias}_{$column["name"]}";
+                    }
                 }
             }
         }
+
 
         $this->select($select);
 

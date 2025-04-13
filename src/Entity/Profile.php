@@ -2,7 +2,6 @@
 
 namespace Entity;
 
-use JsonSerializable;
 use ORM\Attributes\Column;
 use ORM\Attributes\Entity;
 use ORM\Attributes\GeneratedValue;

@@ -94,16 +94,16 @@ final class ReflectionCacheInstance
     /**
      * @throws ReflectionException
      */
-    public function getValue(object $object, string $property): mixed
+    public function getValue(EntityBase $class, string $property): mixed
     {
-        return $this->getProperty($object::class, $property)->getValue($object);
+        return $this->getProperty($class::class, $property)->getValue($class);
     }
 
     /**
      * @throws ReflectionException
      */
-    public function setValue(object $object, string $property, mixed $value): void
+    public function setValue(EntityBase $class, string $property, mixed $value): void
     {
-        $this->getProperty($object::class, $property)->setValue($object, $value);
+        $this->getProperty($class::class, $property)->setValue($class, $value);
     }
 }

@@ -106,4 +106,10 @@ final class ReflectionCacheInstance
     {
         $this->getProperty($class, $property)->setValue($class, $value);
     }
+
+    public function isInitialized(EntityBase $class, string $property): bool
+    {
+        $prop = $this->getProperty($class, $property);
+        return $prop->isInitialized($class);
+    }
 }

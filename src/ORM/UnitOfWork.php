@@ -42,6 +42,17 @@ class UnitOfWork
             return;
         }
 
+        $metadata = $this->metadataParser->parse($entity::class);
+        $reflection = ReflectionCacheInstance::getInstance();
+
+        foreach ($metadata->getColumns() as $property => $column) {
+            $default = $column['attributes']->default ?? null;
+
+            if (!$reflection->isInitialized($entity, $property) && $default !== null) {
+                $reflection->setValue($entity, $property, $default);
+            }
+        }
+
         $this->scheduledForInsert[$entity] = true;
         $this->handleCascades($entity, CascadeType::Persist);
     }

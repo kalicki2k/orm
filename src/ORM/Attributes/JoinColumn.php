@@ -12,9 +12,9 @@ use Attribute;
  * foreign key is mapped in the database.
  *
  * Example:
- *   #[OneToOne(entity: User::class)]
- *   #[JoinColumn(name: "user_id", referencedColumn: "id")]
- *   public User $user;
+ *   #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
+ *   #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: true)]
+ *   public Profile $profile;
  *
  * @see \ORM\Attributes\OneToOne
  * @see \ORM\MetadataParser

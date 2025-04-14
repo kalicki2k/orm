@@ -5,6 +5,7 @@ namespace ORM\Query;
 use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
+use ORM\Entity\Type\FetchType;
 use ORM\Logger\LogHelper;
 use ORM\Metadata\MetadataEntity;
 use PDOException;
@@ -201,14 +202,20 @@ class QueryBuilder
 
         if ($resolveMetadata) {
             foreach ($metadata->getRelations() as $property => $relationData) {
+                $relation = $relationData["relation"];
+
+                if (!$relation) {
+                    continue;
+                }
+
                 if (!in_array($property, $eagerRelations, true)) {
                     continue;
                 }
 
-                $relation = $relationData["relation"];
-                if (!$relation) {
+                if ($relation->fetch !== FetchType::Eager) {
                     continue;
                 }
+
 
                 $relatedMetadata = $resolveMetadata($relation->entity);
                 $joinAlias = $metadata->getRelationAlias($property);

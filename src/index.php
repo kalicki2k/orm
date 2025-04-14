@@ -15,27 +15,27 @@ require_once 'vendor/autoload.php';
 $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
-stream_wrapper_register("orm", StreamWrapper::class);
+//stream_wrapper_register("orm", StreamWrapper::class);
+//
+//$handle = fopen("orm://Entity\\User?format=csv", "r");
+//$output = '';
+//
+//while (!feof($handle)) {
+//    $line = trim(fgets($handle));
+//    if (!empty($line)) {
+//        $output .= $line . "\n";
+//    }
+//}
+//fclose($handle);
+//
+//
+//echo "CSV Output:\n";
+//echo $output;
 
-$handle = fopen("orm://Entity\\User?format=csv", "r");
-$output = '';
+$entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
 
-while (!feof($handle)) {
-    $line = trim(fgets($handle));
-    if (!empty($line)) {
-        $output .= $line . "\n";
-    }
-}
-fclose($handle);
-
-
-echo "CSV Output:\n";
-echo $output;
-
-//$entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
-
-//$results = $entityManager->findAll(User::class);
-//var_dump($results);
+$results = $entityManager->findAll(User::class, ["profile"]);
+var_dump($results);
 
 //foreach ($entityManager->streamAll(User::class) as $u) {
 //    echo "- {$u->getId()}: {$u->getUsername()}" . PHP_EOL;
@@ -46,8 +46,9 @@ echo $output;
 //$profile->setBio("...");
 //
 //$user = new User();
+//$user->setUsername("foo")->setProfile($profile);
 //$user->setUsername("foo")->setEmail("bar@example.com")->setProfile($profile);
-//
+
 //$entityManager->persist($user);
 //$entityManager->flush();
 //

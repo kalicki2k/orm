@@ -3,7 +3,7 @@
 namespace ORM\Attributes;
 
 use Attribute;
-
+use ORM\Entity\Type\FetchType;
 
 /**
  * Defines a one-to-one relationship between two entities.
@@ -12,7 +12,7 @@ use Attribute;
  * Can be configured to specify the owning or inverse side of the relationship.
  *
  * Example:
- *   #[OneToOne(entity: Profile::class, inversedBy: "user")]
+ *   #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
  *   #[JoinColumn(name: "profile_id", referencedColumn: "id")]
  *   public Profile $profile;
  *
@@ -29,6 +29,7 @@ class OneToOne
     public function __construct(
         public string $entity,
         public ?string $mappedBy = null,
-        public array $cascade = [],
+        public ?array $cascade = null,
+        public FetchType $fetch = FetchType::Eager,
     ) {}
 }

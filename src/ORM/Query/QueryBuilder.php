@@ -205,7 +205,7 @@ class QueryBuilder
                     continue;
                 }
 
-                $relation = $relationData['relation'];
+                $relation = $relationData["relation"];
                 if (!$relation) {
                     continue;
                 }
@@ -267,6 +267,13 @@ class QueryBuilder
 
     protected function fromMetadataInsert(MetadataEntity $metadata, array $data): void
     {
+//        @todo: set default values if is not empty and property value is not set...
+//        foreach ($metadata->getColumns() as $column) {
+//            if (array_key_exists($column["name"], $data) && $data[$column["name"]] === null && $column["attributes"]->default !== null) {
+//                $data[$column["name"]] = $column["attributes"]->default;
+//            }
+//        }
+
         $this->values($data);
     }
 

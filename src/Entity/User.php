@@ -24,7 +24,7 @@ class User extends EntityBase
     #[Column(type: "string", length: 255, nullable: false)]
     private string $username;
 
-    #[Column(type: "string", length: 255, nullable: false)]
+    #[Column(type: "string", length: 255, nullable: false, default: "default_email@example.com")]
     private string $email;
 
     #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
@@ -81,7 +81,7 @@ class User extends EntityBase
             "id" => $this->getId(),
             "username" => $this->getUsername(),
             "email" => $this->getEmail(),
-            "profile" => $this->getProfile(),
+//            "profile" => $this->getProfile(),
         ];
     }
 }

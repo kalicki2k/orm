@@ -23,7 +23,7 @@ class MetadataParser
     public function extract(EntityBase $entity, bool $excludePrimaryKey = false) : array
     {
         $metadata = $this->parse($entity::class);
-        $reflection = ReflectionCacheInstance::getInstance()->get($entity::class);
+        $reflection = ReflectionCacheInstance::getInstance();
 
         $data = [];
 
@@ -35,8 +35,7 @@ class MetadataParser
                 continue;
             }
 
-            $value = $reflection->getProperty($property)->getValue($entity);
-            $data[$column['name']] = $value;
+            $data[$column['name']] = $reflection->getValue($entity, $property);;
         }
 
         return $data;

@@ -38,19 +38,24 @@ class UnitOfWork
             return;
         }
 
+        if ($entity->__isPersisted()) {
+            return;
+        }
+
         $this->scheduledForInsert[$entity] = true;
         $this->handleCascades($entity, CascadeType::Persist);
     }
 
+    /**
+     * @throws ReflectionException
+     */
     public function scheduleForUpdate(EntityBase $entity): void
     {
         if (isset($this->scheduledForUpdate[$entity])) {
             return;
         }
 
-        [$_, $data] = $this->getMetadata($entity);
-
-        if (!$entity->__isDirty($data)) {
+        if (!$entity->__isDirty($this->metadataParser->extract($entity))) {
             return;
         }
 
@@ -166,17 +171,17 @@ class UnitOfWork
     private function handleCascades(EntityBase $entity, CascadeType $action): void
     {
         $metadata = $this->metadataParser->parse($entity::class);
-        $reflection = ReflectionCacheInstance::getInstance()->get($entity);
+        $reflection = ReflectionCacheInstance::getInstance();
 
         foreach ($metadata->getRelations() as $property => $relationInfo) {
-            $propertyRef = $reflection->getProperty($property);
+            $reflectionProperty = $reflection->getProperty($entity, $property);
 
-            if (!$propertyRef->isInitialized($entity)) {
+            if (!$reflectionProperty->isInitialized($entity)) {
                 continue;
             }
 
             $cascade = $relationInfo["relation"]->cascade ?? [];
-            $relatedEntity = $propertyRef->getValue($entity);
+            $relatedEntity = $reflection->getValue($entity, $property);
 
             if (!($relatedEntity instanceof EntityBase)) {
                 continue;

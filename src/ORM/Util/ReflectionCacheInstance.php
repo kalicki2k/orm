@@ -65,30 +65,30 @@ final class ReflectionCacheInstance
     /**
      * @throws ReflectionException
      */
-    public function getProperty(string $class, string $property): ReflectionProperty
+    public function getProperty(EntityBase $class, string $property): ReflectionProperty
     {
-        if (!isset($this->propertyCache[$class][$property])) {
+        if (!isset($this->propertyCache[$class::class][$property])) {
             $reflectionClass = $this->get($class);
             $reflectionProperty = $reflectionClass->getProperty($property);
-            $this->propertyCache[$class][$property] = $reflectionProperty;
+            $this->propertyCache[$class::class][$property] = $reflectionProperty;
         }
 
-        return $this->propertyCache[$class][$property];
+        return $this->propertyCache[$class::class][$property];
     }
 
     /**
      * @throws ReflectionException
      */
-    public function getType(string $class, string $property): ?ReflectionNamedType
+    public function getType(EntityBase $class, string $property): ?ReflectionNamedType
     {
-        if (!isset($this->typeCache[$class][$property])) {
+        if (!isset($this->typeCache[$class::class][$property])) {
             $prop = $this->getProperty($class, $property);
-            $this->typeCache[$class][$property] = $prop->getType() instanceof ReflectionNamedType
+            $this->typeCache[$class::class][$property] = $prop->getType() instanceof ReflectionNamedType
                 ? $prop->getType()
                 : null;
         }
 
-        return $this->typeCache[$class][$property];
+        return $this->typeCache[$class::class][$property];
     }
 
     /**
@@ -96,7 +96,7 @@ final class ReflectionCacheInstance
      */
     public function getValue(EntityBase $class, string $property): mixed
     {
-        return $this->getProperty($class::class, $property)->getValue($class);
+        return $this->getProperty($class, $property)->getValue($class);
     }
 
     /**
@@ -104,6 +104,6 @@ final class ReflectionCacheInstance
      */
     public function setValue(EntityBase $class, string $property, mixed $value): void
     {
-        $this->getProperty($class::class, $property)->setValue($class, $value);
+        $this->getProperty($class, $property)->setValue($class, $value);
     }
 }

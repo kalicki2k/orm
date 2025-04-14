@@ -35,7 +35,7 @@ class MetadataParser
                 continue;
             }
 
-            $data[$column['name']] = $reflection->getValue($entity, $property);;
+            $data[$column['name']] = $reflection->getValue($entity, $property);
         }
 
         return $data;

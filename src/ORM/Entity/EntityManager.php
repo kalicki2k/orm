@@ -223,8 +223,8 @@ readonly class EntityManager {
      */
     private function hydrateEntity(MetadataEntity $metadata, array $data): object
     {
-        $reflection = ReflectionCacheInstance::getInstance()->get($metadata->getEntityName());
-        $entity = $reflection->newInstanceWithoutConstructor();
+        $reflection = ReflectionCacheInstance::getInstance();
+        $entity = $reflection->get($metadata->getEntityName())->newInstanceWithoutConstructor();
 
         foreach ($metadata->getColumns() as $property => $column) {
             $name = "{$metadata->getAlias()}_{$column["name"]}";
@@ -234,14 +234,14 @@ readonly class EntityManager {
             }
 
             $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
-            $reflection->getProperty($property)->setValue($entity, $value);
+            $reflection->setValue($entity, $property, $value);
         }
 
         foreach ($metadata->getRelations() as $property => $relation) {
             $related = $this->hydrateRelation($metadata, $property, $relation, $data);
 
             if ($related !== null) {
-                $reflection->getProperty($property)->setValue($entity, $related);
+                $reflection->setValue($entity, $property, $related);
             }
         }
 

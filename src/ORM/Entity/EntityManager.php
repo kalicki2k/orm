@@ -2,11 +2,13 @@
 
 namespace ORM\Entity;
 
+use Closure;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use Generator;
 use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
+use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
 use ORM\Query\QueryBuilder;
@@ -76,6 +78,9 @@ readonly class EntityManager {
         return $this;
     }
 
+    /**
+     * @throws ReflectionException
+     */
     public function delete(EntityBase|array $entity): self
     {
         if (is_array($entity)) {
@@ -279,12 +284,13 @@ readonly class EntityManager {
         array $relation,
         array $data
     ): ?object {
-        $relationAlias = $parentMetadata->getRelationAlias($property);
-        $alias = "{$relationAlias}_";
+        if ($this->isLazyRelation($relation)) {
+            return $this->hydrateLazyRelation($parentMetadata, $relation, $data);
+        }
 
         $relationData = array_filter(
             $data,
-            fn($key) => str_starts_with($key, $alias),
+            fn($key) => str_starts_with($key, "{$parentMetadata->getRelationAlias($property)}_"),
             ARRAY_FILTER_USE_KEY
         );
 
@@ -292,6 +298,40 @@ readonly class EntityManager {
             return null;
         }
 
+        return $this->hydrateEagerRelation($parentMetadata, $property, $relation, $data);
+    }
+
+    private function isLazyRelation(array $relation): bool
+    {
+        return $relation["relation"]->fetch === FetchType::Lazy && isset($relation["joinColumn"]);
+    }
+
+    private function hydrateLazyRelation(
+        MetadataEntity $parentMetadata,
+        array $relation,
+        array $data,
+    ): ?Closure {
+        $joinColumn = $relation["joinColumn"];
+        $foreignKeyName = "{$parentMetadata->getAlias()}_{$joinColumn->name}";
+        $foreignKeyValue = $data[$foreignKeyName] ?? null;
+
+        if ($foreignKeyValue === null) {
+            return null;
+        }
+
+        return fn() => $this->findBy($relation["relation"]->entity, $foreignKeyValue);
+    }
+
+    /**
+     * @throws DateMalformedStringException
+     * @throws ReflectionException
+     */
+    private function hydrateEagerRelation(
+        MetadataEntity $parentMetadata,
+        string $property,
+        array $relation,
+        array $data,
+    ): ?object {
         $relatedMetadata = $this->getMetadata($relation["relation"]->entity);
         $relatedMetadata->setAlias($parentMetadata->getRelationAlias($property));
 

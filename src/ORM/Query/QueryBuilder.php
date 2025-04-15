@@ -186,6 +186,14 @@ class QueryBuilder
         $this->parameters = [];
     }
 
+    /**
+     * @todo Tidy up!
+     * @param MetadataEntity $metadata
+     * @param int|string|array|null $conditions
+     * @param callable|null $resolveMetadata
+     * @param array $eagerRelations
+     * @return void
+     */
     protected function fromMetadataSelect(
         MetadataEntity $metadata,
         int|string|array|null $conditions = null,
@@ -200,6 +208,24 @@ class QueryBuilder
             $select["{$metadata->getAlias()}.{$column["name"]}"] = "{$metadata->getColumnAlias($column["name"])}";
         }
 
+        // Lazy
+        foreach ($metadata->getRelations() as $relationData) {
+            $relation = $relationData["relation"] ?? null;
+            $joinColumn = $relationData["joinColumn"] ?? null;
+
+            if (
+                $relation &&
+                $relation->fetch === FetchType::Lazy &&
+                $joinColumn !== null
+            ) {
+                $columnName = $joinColumn->name;
+                $columnAlias = "{$metadata->getAlias()}_{$columnName}";
+
+                $select["{$metadata->getAlias()}.{$columnName}"] ??= $columnAlias;
+            }
+        }
+
+        // Eager
         if ($resolveMetadata) {
             foreach ($metadata->getRelations() as $property => $relationData) {
                 $relation = $relationData["relation"];
@@ -249,7 +275,6 @@ class QueryBuilder
                 }
             }
         }
-
 
         $this->select($select);
 

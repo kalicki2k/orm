@@ -2,6 +2,7 @@
 
 namespace Entity;
 
+use Closure;
 use ORM\Attributes\Column;
 use ORM\Attributes\Entity;
 use ORM\Attributes\GeneratedValue;
@@ -11,6 +12,7 @@ use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
 use ORM\Entity\EntityBase;
 use ORM\Entity\Type\CascadeType;
+use ORM\Entity\Type\FetchType;
 
 #[Entity]
 #[Table("users")]
@@ -27,9 +29,9 @@ class User extends EntityBase
     #[Column(type: "string", length: 255, nullable: false, default: "default_email@example.com")]
     private string $email;
 
-    #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
+    #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove], fetch: FetchType::Lazy)]
     #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
-    private Profile $profile;
+    private Profile|Closure $profile;
 
     public function getId(): int
     {
@@ -66,6 +68,9 @@ class User extends EntityBase
 
     public function getProfile(): Profile
     {
+        if ($this->profile instanceof Closure) {
+            $this->profile = ($this->profile)();
+        }
         return $this->profile;
     }
 

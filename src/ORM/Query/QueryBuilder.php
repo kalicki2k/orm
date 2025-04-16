@@ -2,7 +2,6 @@
 
 namespace ORM\Query;
 
-use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
 use ORM\Logger\LogHelper;
@@ -11,6 +10,10 @@ use ORM\Query\Builder\DeleteBuilder;
 use ORM\Query\Builder\InsertBuilder;
 use ORM\Query\Builder\SelectBuilder;
 use ORM\Query\Builder\UpdateBuilder;
+use ORM\Query\Sql\DeleteSqlRenderer;
+use ORM\Query\Sql\InsertSqlRenderer;
+use ORM\Query\Sql\SelectSqlRenderer;
+use ORM\Query\Sql\UpdateSqlRenderer;
 use PDOException;
 use Psr\Log\LoggerInterface;
 use RuntimeException;
@@ -33,6 +36,53 @@ class QueryBuilder
         private readonly UpdateBuilder $updateBuilder = new UpdateBuilder(),
         private readonly DeleteBuilder $deleteBuilder = new DeleteBuilder(),
     ) {}
+
+    public function setParameters(array $parameters): self
+    {
+        $this->parameters = $parameters;
+        return $this;
+    }
+
+    public function getDatabaseDriver(): DatabaseDriver
+    {
+        return $this->databaseDriver;
+    }
+
+    public function getValues(): array
+    {
+        return $this->values;
+    }
+
+    public function getColumns(): array
+    {
+        return $this->columns;
+    }
+
+    public function getTable(): string
+    {
+        return $this->table;
+    }
+
+    public function getJoins(): array
+    {
+        return $this->joins;
+    }
+
+    public function getWhere(): array
+    {
+        return $this->where;
+    }
+
+    public function getSQL(): string
+    {
+        return match ($this->action) {
+            "select" => new SelectSqlRenderer()->render($this),
+            "insert" => new InsertSqlRenderer()->render($this),
+            "update" => new UpdateSqlRenderer()->render($this),
+            "delete" => new DeleteSqlRenderer()->render($this),
+            default => new RuntimeException("Unknown action: {$this->action}")
+        };
+    }
 
     public function fromMetadata(
         MetadataEntity $metadata,
@@ -143,17 +193,6 @@ class QueryBuilder
         return $this;
     }
 
-    public function getSQL(): string
-    {
-        return match ($this->action) {
-            "select" => $this->getSelectSQL(),
-            "insert" => $this->getInsertSQL(),
-            "update" => $this->getUpdateSQL(),
-            "delete" => $this->getDeleteSQL(),
-            default => new RuntimeException("Unknown action: {$this->action}")
-        };
-    }
-
     public function execute(): int|Statement
     {
         try {
@@ -191,93 +230,5 @@ class QueryBuilder
         $this->where = [];
         $this->joins = [];
         $this->parameters = [];
-    }
-
-    /**
-     * @return string
-     *
-     * @note
-     * SELECT ...
-     * FROM table [AS alias]
-     * [JOIN ...]
-     * [WHERE ...]
-     * [GROUP BY ...]
-     * [ORDER BY ...]
-     */
-    private function getSelectSQL(): string
-    {
-        $sqlParts = ["SELECT " . implode(", ", $this->columns) . " FROM {$this->table}"];
-
-        foreach ($this->joins as $join) {
-            $sqlParts[] = "{$join["type"]} JOIN {$join["table"]} AS {$join["alias"]} ON {$join['on']}";
-        }
-
-        if (!empty($this->where)) {
-            $whereParts = [];
-
-            foreach ($this->where as $key => $value) {
-                $whereParts[] = "$key = {$value}";
-            }
-
-            $sqlParts[] = "WHERE " . implode(" AND ", $whereParts);
-        }
-
-        return implode(" ", $sqlParts);
-    }
-
-    private function getInsertSQL(): string
-    {
-        $columns = array_keys($this->values);
-        $this->parameters = $this->values;
-
-        return sprintf(
-            "INSERT INTO %s (%s) VALUES (%s)",
-            $this->table,
-            implode(', ', array_map([$this->databaseDriver, 'quoteIdentifier'], $columns)),
-            implode(', ', array_map(fn($col) => ":$col", $columns))
-        );
-    }
-
-    private function getUpdateSQL(): string
-    {
-        if (empty($this->values)) {
-            throw new RuntimeException("No values set for update.");
-        }
-
-        $setParts = [];
-        foreach ($this->values as $column => $_) {
-            $quoted = $this->databaseDriver->quoteIdentifier($column);
-            $setParts[] = "{$quoted} = :{$column}";
-        }
-
-        $sql = "UPDATE {$this->table} SET " . implode(', ', $setParts);
-
-        if (!empty($this->where)) {
-            $whereParts = [];
-            foreach ($this->where as $key => $value) {
-                $whereParts[] = "$key = {$value}";
-            }
-            $sql .= " WHERE " . implode(" AND ", $whereParts);
-        }
-
-        $this->parameters = array_merge($this->values, $this->parameters);
-
-        return $sql;
-    }
-
-    private function getDeleteSQL(): string
-    {
-        $sql = "DELETE FROM {$this->table}";
-
-        if (!empty($this->where)) {
-            $whereParts = [];
-            foreach ($this->where as $key => $value) {
-                $whereParts[] = "$key = {$value}";
-            }
-
-            $sql .= " WHERE " . implode(" AND ", $whereParts);
-        }
-
-        return $sql;
     }
 }

@@ -4,10 +4,10 @@ namespace Tests;
 
 use ORM\Attributes\Column;
 use ORM\Attributes\Table;
-use ORM\EntityManager;
-use ORM\UnitOfWork;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
+use ORM\Entity\EntityManager;
+use ORM\UnitOfWorkOld;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -43,7 +43,7 @@ class UnitOfWorkTest extends TestCase
         $driver->method('lastInsertId')->willReturn(1);
 
         $em = new EntityManager($driver);
-        $unitOfWork = new UnitOfWork($em);
+        $unitOfWork = new UnitOfWorkOld($em);
 
         $unitOfWork->scheduleInsert($entity);
         $unitOfWork->commit();
@@ -71,7 +71,7 @@ class UnitOfWorkTest extends TestCase
         $driver->method('prepare')->willReturn($stmt);
 
         $em = new EntityManager($driver);
-        $unitOfWork = new UnitOfWork($em);
+        $unitOfWork = new UnitOfWorkOld($em);
         $unitOfWork->scheduleUpdate($entity);
         $unitOfWork->commit();
 
@@ -98,7 +98,7 @@ class UnitOfWorkTest extends TestCase
         $driver->method('prepare')->willReturn($stmt);
 
         $em = new EntityManager($driver);
-        $unitOfWork = new UnitOfWork($em);
+        $unitOfWork = new UnitOfWorkOld($em);
         $unitOfWork->scheduleDelete($entity);
         $unitOfWork->commit();
 

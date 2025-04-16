@@ -1,10 +1,6 @@
 <?php
 
 use Dotenv\Dotenv;
-use Entity\User;
-use ORM\Drivers\PDODriver;
-use ORM\EntityManager;
-use ORM\Logger\LoggerFactory;
 use ORM\Stream\StreamWrapper;
 
 require_once 'vendor/autoload.php';

@@ -34,26 +34,30 @@ $dotenv->load();
 
 $entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
 
-$results = $entityManager->findAll(User::class, ["profile"]);
-var_dump($results);
+//$results = $entityManager->findAll(User::class, ["profile"]);
+//var_dump($results);
+
+$user = $entityManager->findBy(User::class, 2, ["profile"]);
+//var_dump($user);
+var_dump($user->getProfile()->getBio());
 
 //foreach ($entityManager->streamAll(User::class) as $u) {
 //    echo "- {$u->getId()}: {$u->getUsername()}" . PHP_EOL;
 //}
 
 //
-//$profile = new Profile();
-//$profile->setBio("...");
-//
-//$user = new User();
-//$user->setUsername("foo")->setProfile($profile);
-//$user->setUsername("foo")->setEmail("bar@example.com")->setProfile($profile);
+$profile = new Profile();
+$profile->setBio("...");
 
-//$entityManager->persist($user);
-//$entityManager->flush();
-//
-//$entityManager->delete($user);
-//$entityManager->flush();
+$user = new User();
+$user->setUsername("foo")->setProfile($profile);
+$user->setUsername("foo")->setEmail("bar@example.com")->setProfile($profile);
+
+$entityManager->persist($user);
+$entityManager->flush();
+
+$entityManager->delete($user);
+$entityManager->flush();
 
 //$user1 = new User();
 //$user1->setUsername("alice")->setEmail("alice@example.com");

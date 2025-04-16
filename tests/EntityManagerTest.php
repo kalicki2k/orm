@@ -2,11 +2,11 @@
 
 namespace Tests;
 
-use ORM\EntityManager;
-use ORM\Drivers\DatabaseDriver;
-use PHPUnit\Framework\TestCase;
-use ORM\Attributes\Table;
 use ORM\Attributes\Column;
+use ORM\Attributes\Table;
+use ORM\Drivers\DatabaseDriver;
+use ORM\Entity\EntityManager;
+use PHPUnit\Framework\TestCase;
 
 /**
  * Dummy entity class with #[Table] and #[Column] attributes

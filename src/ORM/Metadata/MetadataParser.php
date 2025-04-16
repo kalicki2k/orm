@@ -3,12 +3,7 @@
 namespace ORM\Metadata;
 
 use InvalidArgumentException;
-use ORM\Attributes\Column;
 use ORM\Attributes\Entity;
-use ORM\Attributes\GeneratedValue;
-use ORM\Attributes\Id;
-use ORM\Attributes\JoinColumn;
-use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\AttributeHandler\ColumnAttributeHandler;
@@ -17,7 +12,6 @@ use ORM\Metadata\AttributeHandler\MetadataAttributeHandler;
 use ORM\Metadata\AttributeHandler\OneToOneAttributeHandler;
 use ORM\Util\ReflectionCacheInstance;
 use ReflectionException;
-use ReflectionProperty;
 
 class MetadataParser
 {

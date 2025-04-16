@@ -2,16 +2,17 @@
 
 namespace ORM\Entity;
 
-use Closure;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use Generator;
 use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
-use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
 use ORM\Query\QueryBuilder;
+use ORM\Relation\EagerOneToOneHydrator;
+use ORM\Relation\LazyOneToOneHydrator;
+use ORM\Relation\RelationHydrator;
 use ORM\UnitOfWork;
 use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
@@ -23,6 +24,9 @@ use ReflectionException;
  * The EntityManager handles querying, persisting, and retrieving entity objects.
  */
 readonly class EntityManager {
+    /** @var RelationHydrator[] */
+    private array $relationHydrators;
+
     private UnitOfWork $unitOfWork;
 
     /**
@@ -38,6 +42,10 @@ readonly class EntityManager {
         private ?LoggerInterface $logger = null,
     ) {
         $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->logger);
+        $this->relationHydrators = [
+            new LazyOneToOneHydrator($this),
+            new EagerOneToOneHydrator($this),
+        ];
     }
 
     /**
@@ -226,10 +234,27 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    private function hydrateEntity(MetadataEntity $metadata, array $data): object
+    public function hydrateEntity(MetadataEntity $metadata, array $data): EntityBase
     {
         $reflection = ReflectionCacheInstance::getInstance();
         $entity = $reflection->get($metadata->getEntityName())->newInstanceWithoutConstructor();
+
+        $this->hydrateColumns($entity, $metadata, $data);
+        $this->hydrateRelations($entity, $metadata, $data);
+
+        $entity->__takeSnapshot($this->metadataParser->extract($entity));
+
+        return $entity;
+    }
+
+
+    /**
+     * @throws DateMalformedStringException
+     * @throws ReflectionException
+     */
+    private function hydrateColumns(EntityBase $entity, MetadataEntity $metadata, array $data): void
+    {
+        $reflection = ReflectionCacheInstance::getInstance();
 
         foreach ($metadata->getColumns() as $property => $column) {
             $name = "{$metadata->getAlias()}_{$column["name"]}";
@@ -241,18 +266,6 @@ readonly class EntityManager {
             $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
             $reflection->setValue($entity, $property, $value);
         }
-
-        foreach ($metadata->getRelations() as $property => $relation) {
-            $related = $this->hydrateRelation($metadata, $property, $relation, $data);
-
-            if ($related !== null) {
-                $reflection->setValue($entity, $property, $related);
-            }
-        }
-
-        $entity->__takeSnapshot($this->metadataParser->extract($entity));
-
-        return $entity;
     }
 
     /**
@@ -276,65 +289,34 @@ readonly class EntityManager {
 
     /**
      * @throws ReflectionException
-     * @throws DateMalformedStringException
      */
+    private function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $data): void
+    {
+        $reflection = ReflectionCacheInstance::getInstance();
+
+        foreach ($metadata->getRelations() as $property => $relation) {
+            $related = $this->hydrateRelation($metadata, $property, $relation, $data);
+
+            if ($related !== null) {
+                $reflection->setValue($entity, $property, $related);
+            }
+        }
+    }
+
+
     private function hydrateRelation(
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,
         array $data
-    ): ?object {
-        if ($this->isLazyRelation($relation)) {
-            return $this->hydrateLazyRelation($parentMetadata, $relation, $data);
-        }
-
-        $relationData = array_filter(
-            $data,
-            fn($key) => str_starts_with($key, "{$parentMetadata->getRelationAlias($property)}_"),
-            ARRAY_FILTER_USE_KEY
-        );
-
-        if (empty($relationData) || count(array_filter($relationData, fn($v) => $v !== null)) === 0) {
-            return null;
-        }
-
-        return $this->hydrateEagerRelation($parentMetadata, $property, $relation, $data);
-    }
-
-    private function isLazyRelation(array $relation): bool
+    ): ?object
     {
-        return $relation["relation"]->fetch === FetchType::Lazy && isset($relation["joinColumn"]);
-    }
-
-    private function hydrateLazyRelation(
-        MetadataEntity $parentMetadata,
-        array $relation,
-        array $data,
-    ): ?Closure {
-        $joinColumn = $relation["joinColumn"];
-        $foreignKeyName = "{$parentMetadata->getAlias()}_{$joinColumn->name}";
-        $foreignKeyValue = $data[$foreignKeyName] ?? null;
-
-        if ($foreignKeyValue === null) {
-            return null;
+        foreach ($this->relationHydrators as $hydrator) {
+            if ($hydrator->supports($relation)) {
+                return $hydrator->hydrate($parentMetadata, $property, $relation, $data);
+            }
         }
 
-        return fn() => $this->findBy($relation["relation"]->entity, $foreignKeyValue);
-    }
-
-    /**
-     * @throws DateMalformedStringException
-     * @throws ReflectionException
-     */
-    private function hydrateEagerRelation(
-        MetadataEntity $parentMetadata,
-        string $property,
-        array $relation,
-        array $data,
-    ): ?object {
-        $relatedMetadata = $this->getMetadata($relation["relation"]->entity);
-        $relatedMetadata->setAlias($parentMetadata->getRelationAlias($property));
-
-        return $this->hydrateEntity($relatedMetadata, $data);
+        return null;
     }
 }

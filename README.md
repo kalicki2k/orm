@@ -1,19 +1,22 @@
 # ORM (PHP Attribute-Based Object-Relational Mapper)
 
-This is a lightweight, attribute-driven ORM built for PHP 8.4+ that maps PHP classes to relational database tables using native attributes. It provides a minimal but flexible layer for working with your entities.
+A fast, minimal, attribute-based ORM for PHP 8.4+, built for performance and readability.  
+Powered by native attributes, a modular architecture, and zero magic.
 
 ---
 
 ## ✨ Features
 
-✅ Modern attribute-based entity definitions  
-✅ Support for insert, update, delete, find, findAll, findBy, findOneBy, streamAll, and streamBy  
-✅ Unit of Work pattern for efficient batching  
-✅ Identity map to avoid duplicate hydration  
-✅ Logging via PSR-3 (Monolog)  
-✅ Custom `StreamWrapper` for reading/updating/deleting via PHP's stream API  
-✅ Support for `PrimaryGeneratedColumn` (incl. UUID strategy)  
-✅ Works with any PDO-compatible database
+✅ PHP 8.4 attributes for entity mapping  
+✅ Clean architecture with responsibility-separated components  
+✅ Modular QueryBuilder with pluggable builders & SQL renderers  
+✅ Support for insert, update, delete, find, streamAll, streamBy  
+✅ Lazy & Eager loading with FetchType enum  
+✅ OneToOne support incl. JoinColumn handling  
+✅ UnitOfWork with cascade persistence/removal  
+✅ StreamWrapper for CRUD via PHP streams (`fopen('orm://...')`)  
+✅ PSR-3 Logging (Monolog or custom)  
+✅ Reflection caching for blazing speed
 
 ---
 
@@ -23,9 +26,9 @@ This is a lightweight, attribute-driven ORM built for PHP 8.4+ that maps PHP cla
 composer install
 ```
 
-`.env` configuration:
+`.env`:
 
-```env
+```dotenv
 DB_DSN=mysql:host=localhost;dbname=orm
 DB_USER=root
 DB_PASSWORD=secret
@@ -33,13 +36,18 @@ DB_PASSWORD=secret
 
 ---
 
-## 🔧 Setup
+## 🔧 Usage
 
 ```php
-use ORM\Drivers\PDODriver;use ORM\Entity\EntityManager;use ORM\Logger\LoggerFactory;
+use ORM\Drivers\PDODriver;
+use ORM\Entity\EntityManager;
+use ORM\Logger\LoggerFactory;
 
-$driver = PDODriver::fromEnv();
-$entityManager = new EntityManager($driver, LoggerFactory::create());
+$entityManager = new EntityManager(
+    PDODriver::fromEnv(),
+    new \ORM\Metadata\MetadataParser(),
+    LoggerFactory::create()
+);
 ```
 
 ---
@@ -47,18 +55,32 @@ $entityManager = new EntityManager($driver, LoggerFactory::create());
 ## 👤 Example Entity
 
 ```php
-#[Table(name: "users")]
-class User implements JsonSerializable {
-    #[Column(name: "id", type: "int", primary: true, autoIncrement: true)]
-    public int $id;
+#[Entity]
+#[Table("users")]
+class User extends EntityBase {
+    #[Id]
+    #[GeneratedValue]
+    #[Column(type: "int")]
+    private int $id;
 
-    #[Column(name: "username", type: "string")]
-    public string $username;
-    
-    #[Column(name: "email", type: "string")]
-    public string $email;
+    #[Column(type: "string")]
+    private string $username;
 
-    public function jsonSerialize(): array {
+    #[Column(type: "string", default: "test@example.com")]
+    private string $email;
+
+    #[OneToOne(entity: Profile::class)]
+    #[JoinColumn(name: "profile_id", referencedColumn: "id")]
+    private Profile|Closure $profile;
+
+    public function getProfile(): Profile {
+        if ($this->profile instanceof Closure) {
+            $this->profile = ($this->profile)();
+        }
+        return $this->profile;
+    }
+
+    public function jsonSerialize(): mixed {
         return [
             'id' => $this->id,
             'email' => $this->email,
@@ -71,56 +93,43 @@ class User implements JsonSerializable {
 
 ## 🔄 CRUD Operations
 
-### Create
-
 ```php
+// Insert
 $user = new User();
-$user->username = 'alice';
-$user->email = 'alice@example.com';
-
+$user->setUsername("neo");
+$user->setEmail("neo@matrix.io");
 $entityManager->persist($user);
 $entityManager->flush();
-```
 
-### Update
-
-```php
-$user->email = 'new@example.com';
+// Update
+$user->setEmail("trinity@zion.com");
 $entityManager->update($user);
 $entityManager->flush();
-```
 
-### Delete
-
-```php
+// Delete
 $entityManager->delete($user);
 $entityManager->flush();
-```
 
-### Find
-
-```php
-$user = $entityManager->findBy(User::class, 1);
+// Find
+$found = $entityManager->findBy(User::class, 1);
 ```
 
 ---
 
-## 📡 StreamWrapper Usage
+## 🔁 StreamWrapper
 
 ```php
 stream_wrapper_register("orm", ORM\Stream\StreamWrapper::class);
 
 // Read
-$handle = fopen("orm://Entity\\User", "r");
-while (!feof($handle)) {
-    echo fgets($handle);
-}
-fclose($handle);
+$h = fopen("orm://Entity\\User?format=json", "r");
+while (!feof($h)) echo fgets($h);
+fclose($h);
 
-// Write (update or create)
-$handle = fopen("orm://Entity\\User", "w");
-fwrite($handle, json_encode(['id' => 1, 'email' => 'updated@example.com']));
-fclose($handle);
+// Write
+$h = fopen("orm://Entity\\User", "w");
+fwrite($h, json_encode(['id' => 1, 'email' => 'updated@example.com']));
+fclose($h);
 
 // Delete
 unlink("orm://Entity\\User?id=1");
@@ -128,44 +137,46 @@ unlink("orm://Entity\\User?id=1");
 
 ---
 
-## 📦 Architecture Overview
+## 🧱 Architecture
 
-- `EntityManager` – central ORM controller  
-- `UnitOfWork` – tracks object changes and manages transactions  
-- `MetadataParser` – reads PHP attributes and converts them to metadata  
-- `QueryBuilder` – fluent API for custom queries  
-- `EntityBase` – shared entity base  
-- `CascadeType` – control over cascading behavior  
-- `ReflectionCache` – improves performance by caching reflection data
+| Component | Responsibility |
+|----------|----------------|
+| `EntityManager` | orchestrates all ORM operations |
+| `UnitOfWork` | tracks inserts/updates/deletes with cascade handling |
+| `MetadataParser` | reads PHP attributes into metadata |
+| `QueryBuilder` | fluent API for query construction |
+| `InsertBuilder` etc. | builds metadata-based query contexts |
+| `SelectSqlRenderer` etc. | renders SQL based on QueryBuilder state |
+| `StreamWrapper` | CRUD via PHP stream API |
+| `ReflectionCacheInstance` | optimizes performance by caching reflection |
 
 ---
 
 ## 🧪 Requirements
 
 - PHP 8.4+
-- PDO extension
+- PDO
 - Composer
 
 ---
 
-## 🛠 TODO / Ideas
+## 🧠 What's next?
 
-- [ ] Add support for relations (OneToOne, OneToMany, etc.)
-- [ ] Lazy loading with proxy/lazy-object support (PHP 8.4)
-- [ ] Batch inserts / bulk updates
-- [ ] Schema validation & syncing
-- [ ] Add migrations support
-- [ ] Caching for metadata
-- [ ] Type safety & hydration strategies (e.g., enums, DateTime)
-- [ ] Extend StreamWrapper to support `fseek`/`ftell`
-- [ ] Add annotation support (for legacy systems)
-- [ ] Improve error handling with custom exceptions
-- [ ] Add unit tests for stream wrapper & UnitOfWork
-- [ ] CLI Tooling (e.g., generate entities, migration runner)
+- [x] Lazy & Eager loading
+- [x] JoinColumn + mappedBy logic
+- [x] Modular QueryBuilder
+- [x] SQL Renderer Strategy
+- [ ] OneToMany / ManyToOne / ManyToMany
+- [ ] QueryContext abstraction
+- [ ] CLI tooling (generate entities, run migrations)
+- [ ] Schema sync / migration diffing
+- [ ] Type coercion (enum, datetime, uuid, etc.)
+- [ ] Soft deletes
+- [ ] ExpressionBuilder for where clauses
+- [ ] Test coverage for UoW + Hydrators + Builders
 
 ---
 
 ## 📄 License
 
 MIT
-

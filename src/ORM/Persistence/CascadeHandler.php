@@ -9,11 +9,11 @@ use ORM\Util\ReflectionCacheInstance;
 use ORM\UnitOfWork;
 use ReflectionException;
 
-final class CascadeHandler
+final readonly class CascadeHandler
 {
     public function __construct(
-        private readonly MetadataParser $metadataParser,
-        private readonly UnitOfWork $unitOfWork,
+        private MetadataParser $metadataParser,
+        private UnitOfWork     $unitOfWork,
     ) {}
 
     /**

@@ -6,6 +6,10 @@ use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Entity\Type\CascadeType;
 use ORM\Metadata\MetadataParser;
+use ORM\Persistence\CascadeHandler;
+use ORM\Persistence\DeleteExecutor;
+use ORM\Persistence\InsertExecutor;
+use ORM\Persistence\UpdateExecutor;
 use ORM\Query\QueryBuilder;
 use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
@@ -15,15 +19,23 @@ use WeakMap;
 
 class UnitOfWork
 {
+    private InsertExecutor $insertExecutor;
+    private UpdateExecutor $updateExecutor;
+    private DeleteExecutor $deleteExecutor;
+    private CascadeHandler $cascadeHandler;
     private WeakMap $scheduledForInsert;
     private WeakMap $scheduledForUpdate;
     private WeakMap $scheduledForDelete;
 
     public function __construct(
-        private readonly DatabaseDriver $databaseDriver,
+        readonly DatabaseDriver $databaseDriver,
         private readonly MetadataParser $metadataParser,
-        private readonly ?LoggerInterface $logger = null,
+        readonly ?LoggerInterface $logger = null,
     ) {
+        $this->insertExecutor = new InsertExecutor($databaseDriver, $metadataParser, $logger);
+        $this->updateExecutor = new UpdateExecutor($databaseDriver, $metadataParser, $logger);
+        $this->deleteExecutor = new DeleteExecutor($databaseDriver, $metadataParser, $logger);
+        $this->cascadeHandler = new CascadeHandler($metadataParser, $this);
         $this->scheduledForInsert = new WeakMap();
         $this->scheduledForUpdate = new WeakMap();
         $this->scheduledForDelete = new WeakMap();
@@ -122,20 +134,7 @@ class UnitOfWork
      */
     private function executeInsert(EntityBase $entity): void
     {
-        [$metadata, $data] = $this->getMetadata($entity, true);
-
-        $lastInsertId = new QueryBuilder($this->databaseDriver, $this->logger)
-            ->insert()
-            ->fromMetadata($metadata, $data)
-            ->execute();
-
-        // @Todo Use caching!!!
-        $reflection = ReflectionCacheInstance::getInstance()
-            ->get($entity)
-            ->getProperty($metadata->getPrimaryKey());
-        $reflection->setValue($entity, $lastInsertId);
-
-        $entity->__markPersisted($this->metadataParser->extract($entity));
+        $this->insertExecutor->execute($entity);
     }
 
     /**
@@ -143,12 +142,7 @@ class UnitOfWork
      */
     private function executeUpdate(EntityBase $entity): void
     {
-        [$metadata, $data] = $this->getMetadata($entity);
-
-        new QueryBuilder($this->databaseDriver, $this->logger)
-            ->update()
-            ->fromMetadata($metadata, $data)
-            ->execute();
+        $this->updateExecutor->execute($entity);
     }
 
     /**
@@ -156,25 +150,7 @@ class UnitOfWork
      */
     private function executeDelete(EntityBase $entity): void
     {
-        [$metadata, $data] = $this->getMetadata($entity);
-        $id = $data[$metadata->getPrimaryKey()];
-
-        if ($id === null) {
-            throw new RuntimeException("Cannot delete entity without identifier.");
-        }
-
-        new QueryBuilder($this->databaseDriver, $this->logger)->delete()->fromMetadata($metadata, $id)->execute();
-    }
-
-    /**
-     * @throws ReflectionException
-     */
-    private function getMetadata(EntityBase $entity, bool $excludePrimaryKey = false): array
-    {
-        return [
-            $this->metadataParser->parse($entity::class),
-            $this->metadataParser->extract($entity, $excludePrimaryKey),
-        ];
+        $this->deleteExecutor->execute($entity);
     }
 
     /**
@@ -182,31 +158,6 @@ class UnitOfWork
      */
     private function handleCascades(EntityBase $entity, CascadeType $action): void
     {
-        $metadata = $this->metadataParser->parse($entity::class);
-        $reflection = ReflectionCacheInstance::getInstance();
-
-        foreach ($metadata->getRelations() as $property => $relationInfo) {
-            $reflectionProperty = $reflection->getProperty($entity, $property);
-
-            if (!$reflectionProperty->isInitialized($entity)) {
-                continue;
-            }
-
-            $cascade = $relationInfo["relation"]->cascade ?? [];
-            $relatedEntity = $reflection->getValue($entity, $property);
-
-            if (!($relatedEntity instanceof EntityBase)) {
-                continue;
-            }
-
-            if (!in_array($action, $cascade, true)) {
-                continue;
-            }
-
-            match ($action) {
-                CascadeType::Persist => $this->scheduleForInsert($relatedEntity),
-                CascadeType::Remove => $this->scheduleForDelete($relatedEntity),
-            };
-        }
+        $this->cascadeHandler->handle($entity, $action);
     }
 }

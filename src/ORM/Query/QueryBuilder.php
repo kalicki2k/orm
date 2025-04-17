@@ -33,6 +33,11 @@ class QueryBuilder
         $this->queryContext = new QueryContext();
     }
 
+    public function getContext(): QueryContext
+    {
+        return $this->queryContext;
+    }
+
     public function getSQL(): string
     {
         return match ($this->queryContext->action) {
@@ -66,6 +71,8 @@ class QueryBuilder
     public function table(string $table, ?string $alias = null): self
     {
         $tableQuoted = $this->databaseDriver->quoteIdentifier($table);
+        $this->queryContext->alias = $alias;
+
         $this->queryContext->table = $this->queryContext->action === 'select' && $alias
             ? "$tableQuoted AS " . $this->databaseDriver->quoteIdentifier($alias)
             : $tableQuoted;

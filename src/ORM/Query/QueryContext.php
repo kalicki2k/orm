@@ -22,14 +22,16 @@ final class QueryContext
      *
      * @var string|null
      */
-    public ?string $action;
+    public ?string $action = null;
 
     /**
      * The quoted table name (with alias if SELECT).
      *
      * @var string|null
      */
-    public ?string $table;
+    public ?string $table = null;
+
+    public ?string $alias = null;
 
     /**
      * List of columns or expressions (already quoted and aliased).
@@ -70,4 +72,9 @@ final class QueryContext
      * @var array<string, mixed>
      */
     public array $parameters = [];
+
+    public function useAlias(): bool
+    {
+        return $this->action === 'select' && !empty($this->alias);
+    }
 }

@@ -6,9 +6,13 @@ use InvalidArgumentException;
 use ORM\Metadata\MetadataEntity;
 use ORM\Query\QueryBuilder;
 
-final class UpdateBuilder
+final readonly class UpdateBuilder
 {
-    public function apply(QueryBuilder $query, MetadataEntity $metadata, array $data): void
+    public function __construct(
+        private WhereBuilder $whereBuilder = new WhereBuilder()
+    ) {}
+
+    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, array $data): void
     {
         $primaryKey = $metadata->getPrimaryKey();
         $primaryValue = $data[$primaryKey] ?? null;
@@ -18,9 +22,8 @@ final class UpdateBuilder
         }
 
         unset($data[$primaryKey]);
-
-        $query
-            ->values($data)
-            ->where([$primaryKey => ':id'], ['id' => $primaryValue]);
+        $queryBuilder->values($data);
+        [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $primaryValue);
+        $queryBuilder->where($where, $params);
     }
 }

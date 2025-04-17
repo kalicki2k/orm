@@ -18,11 +18,6 @@ final readonly class DeleteBuilder
             throw new InvalidArgumentException("Missing identifier for delete");
         }
 
-//        $queryBuilder->where(
-//            [$metadata->getPrimaryKey() => ':id'],
-//            ['id' => $id]
-//        );
-
         [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $id);
         $queryBuilder->where($where, $params);
     }

@@ -2,12 +2,14 @@
 
 namespace ORM\Query\Sql;
 
-use ORM\Query\QueryBuilder;
+use ORM\Drivers\DatabaseDriver;
+use ORM\Query\QueryContext;
 
 final class SelectSqlRenderer implements SqlRenderer
 {
     /**
-     * @param QueryBuilder $queryBuilder
+     * @param QueryContext $queryContext
+     * @param DatabaseDriver $databaseDriver
      * @return string
      *
      * @note
@@ -18,20 +20,20 @@ final class SelectSqlRenderer implements SqlRenderer
      * [GROUP BY ...]
      * [ORDER BY ...]
      */
-    public function render(QueryBuilder $queryBuilder): string
+    public function render(QueryContext $queryContext, DatabaseDriver $databaseDriver): string
     {
-        $columns = implode(", ", $queryBuilder->getColumns());
-        $sqlParts = ["SELECT {$columns} FROM {$queryBuilder->getTable()}"];
+        $columns = implode(", ", $queryContext->columns);
+        $sqlParts = ["SELECT $columns FROM $queryContext->table"];
 
-        foreach ($queryBuilder->getJoins() as $join) {
+        foreach ($queryContext->joins as $join) {
             $sqlParts[] = "{$join["type"]} JOIN {$join["table"]} AS {$join["alias"]} ON {$join["on"]}";
         }
 
-        if (!empty($queryBuilder->getWhere())) {
+        if (!empty($queryContext->where)) {
             $whereParts = [];
 
-            foreach ($queryBuilder->getWhere() as $key => $value) {
-                $whereParts[] = "$key = {$value}";
+            foreach ($queryContext->where as $key => $value) {
+                $whereParts[] = "$key = $value";
             }
 
             $sqlParts[] = "WHERE " . implode(" AND ", $whereParts);

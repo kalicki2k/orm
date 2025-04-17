@@ -20,13 +20,7 @@ use RuntimeException;
 
 class QueryBuilder
 {
-    private ?string $action;
-    private ?string $table;
-    private array $values = [];
-    private array $columns  = [];
-    private array $where = [];
-    private array $joins = [];
-    private array $parameters = [];
+    private QueryContext $queryContext;
 
     public function __construct(
         private readonly DatabaseDriver $databaseDriver,
@@ -35,52 +29,23 @@ class QueryBuilder
         private readonly InsertBuilder $insertBuilder = new InsertBuilder(),
         private readonly UpdateBuilder $updateBuilder = new UpdateBuilder(),
         private readonly DeleteBuilder $deleteBuilder = new DeleteBuilder(),
-    ) {}
-
-    public function setParameters(array $parameters): self
-    {
-        $this->parameters = $parameters;
-        return $this;
+    ) {
+        $this->queryContext = new QueryContext();
     }
 
-    public function getDatabaseDriver(): DatabaseDriver
+    public function getContext(): QueryContext
     {
-        return $this->databaseDriver;
-    }
-
-    public function getValues(): array
-    {
-        return $this->values;
-    }
-
-    public function getColumns(): array
-    {
-        return $this->columns;
-    }
-
-    public function getTable(): string
-    {
-        return $this->table;
-    }
-
-    public function getJoins(): array
-    {
-        return $this->joins;
-    }
-
-    public function getWhere(): array
-    {
-        return $this->where;
+        return $this->queryContext;
     }
 
     public function getSQL(): string
     {
-        return match ($this->action) {
-            "select" => new SelectSqlRenderer()->render($this),
-            "insert" => new InsertSqlRenderer()->render($this),
-            "update" => new UpdateSqlRenderer()->render($this),
-            "delete" => new DeleteSqlRenderer()->render($this),
-            default => new RuntimeException("Unknown action: {$this->action}")
+        return match ($this->queryContext->action) {
+            "select" => new SelectSqlRenderer()->render($this->queryContext, $this->databaseDriver),
+            "insert" => new InsertSqlRenderer()->render($this->queryContext, $this->databaseDriver),
+            "update" => new UpdateSqlRenderer()->render($this->queryContext, $this->databaseDriver),
+            "delete" => new DeleteSqlRenderer()->render($this->queryContext, $this->databaseDriver),
+            default => new RuntimeException("Unknown action: {$this->queryContext->action}")
         };
     }
 
@@ -92,12 +57,12 @@ class QueryBuilder
     ): self {
         $this->table($metadata->getTable(), $metadata->getAlias());
 
-        match ($this->action) {
+        match ($this->queryContext->action) {
             'select' => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $eagerRelations),
             'insert' => $this->insertBuilder->apply($this, $metadata, $payload),
             'update' => $this->updateBuilder->apply($this, $metadata, $payload),
             'delete' => $this->deleteBuilder->apply($this, $metadata, $payload),
-            default => throw new RuntimeException("Unsupported action: {$this->action}")
+            default => throw new RuntimeException("Unsupported action: {$this->queryContext->action}")
         };
 
         return $this;
@@ -105,23 +70,24 @@ class QueryBuilder
 
     public function table(string $table, ?string $alias = null): self
     {
-        $this->table = $this->databaseDriver->quoteIdentifier($table);
+        $tableQuoted = $this->databaseDriver->quoteIdentifier($table);
+        $this->queryContext->alias = $alias;
 
-        if ($this->action === "select" && !empty($alias)) {
-            $this->table .= " AS {$this->databaseDriver->quoteIdentifier($alias)}";
-        }
+        $this->queryContext->table = $this->queryContext->action === 'select' && $alias
+            ? "$tableQuoted AS " . $this->databaseDriver->quoteIdentifier($alias)
+            : $tableQuoted;
 
         return $this;
     }
 
     public function select(?array $selectColumns = null): self
     {
-        $this->action = "select";
+        $this->queryContext->action = "select";
 
         if (!empty($selectColumns)) {
             foreach ($selectColumns as $key => $alias) {
                 if (is_int($key)) {
-                    $this->columns[] = $this->databaseDriver->quoteIdentifier($alias);
+                    $this->queryContext->columns[] = $this->databaseDriver->quoteIdentifier($alias);
                     continue;
                 }
 
@@ -132,7 +98,7 @@ class QueryBuilder
                     : $this->databaseDriver->quoteIdentifier($table) . '.' . $this->databaseDriver->quoteIdentifier($column);
                 $quotedAlias = $this->databaseDriver->quoteIdentifier($alias);
 
-                $this->columns[] = "{$quoted} AS {$quotedAlias}";
+                $this->queryContext->columns[] = "$quoted AS $quotedAlias";
             }
         }
 
@@ -141,19 +107,19 @@ class QueryBuilder
 
     public function insert(): self
     {
-        $this->action = "insert";
+        $this->queryContext->action = "insert";
         return $this;
     }
 
     public function update(): self
     {
-        $this->action = "update";
+        $this->queryContext->action = "update";
         return $this;
     }
 
     public function delete(): self
     {
-        $this->action = "delete";
+        $this->queryContext->action = "delete";
         return $this;
     }
 
@@ -163,23 +129,23 @@ class QueryBuilder
             [$table, $column] = explode(".", "$key", 2) + [null, null];
 
             if (is_null($column)) {
-                $this->where["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;
+                $this->queryContext->where["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;
             } else {
-                $this->where["{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)}"] = $value;
+                $this->queryContext->where["{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)}"] = $value;
             }
         }
 
-        $this->parameters = $parameters;
+        $this->queryContext->parameters = $parameters;
         return $this;
     }
 
     public function leftJoin(string $table, string $alias, string $on): self
     {
-        $this->joins[] = [
+        $this->queryContext->joins[] = [
             'type' => 'LEFT',
             'table' => $this->databaseDriver->quoteIdentifier($table),
             'alias' => $this->databaseDriver->quoteIdentifier($alias),
-            'on' => preg_replace_callback('/\b([\w]+)\.([\w]+)\b/', function ($matches) {
+            'on' => preg_replace_callback('/\b(\w+)\.(\w+)\b/', function ($matches) {
                 return $this->databaseDriver->quoteIdentifier($matches[1]) . '.' . $this->databaseDriver->quoteIdentifier($matches[2]);
             }, $on),
         ];
@@ -189,7 +155,7 @@ class QueryBuilder
 
     public function values(array $data): self
     {
-        $this->values = $data;
+        $this->queryContext->values = $data;
         return $this;
     }
 
@@ -200,14 +166,14 @@ class QueryBuilder
 
             $statement = $this->databaseDriver->prepare($sql);
 
-            foreach ($this->parameters as $parameter => $value) {
-                $statement->bindValue(":{$parameter}", $value);
+            foreach ($this->queryContext->parameters as $parameter => $value) {
+                $statement->bindValue(":$parameter", $value);
             }
 
-            LogHelper::query($sql, $this->parameters, $this->logger);
+            LogHelper::query($sql, $this->queryContext->parameters, $this->logger);
             $statement->execute();
 
-            if ($this->action === "insert") {
+            if ($this->queryContext->action === "insert") {
                 $lastInsertId = $this->databaseDriver->lastInsertId();
                 $this->reset();
 
@@ -223,12 +189,12 @@ class QueryBuilder
 
     private function reset(): void
     {
-        $this->action = null;
-        $this->table = null;
-        $this->values = [];
-        $this->columns = [];
-        $this->where = [];
-        $this->joins = [];
-        $this->parameters = [];
+        $this->queryContext->action = null;
+        $this->queryContext->table = null;
+        $this->queryContext->values = [];
+        $this->queryContext->columns = [];
+        $this->queryContext->where = [];
+        $this->queryContext->joins = [];
+        $this->queryContext->parameters = [];
     }
 }

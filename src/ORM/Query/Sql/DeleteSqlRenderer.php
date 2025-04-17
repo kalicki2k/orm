@@ -2,18 +2,19 @@
 
 namespace ORM\Query\Sql;
 
-use ORM\Query\QueryBuilder;
+use ORM\Drivers\DatabaseDriver;
+use ORM\Query\QueryContext;
 
 final class DeleteSqlRenderer implements SqlRenderer
 {
-    public function render(QueryBuilder $queryBuilder): string
+    public function render(QueryContext $queryContext, DatabaseDriver $databaseDriver): string
     {
-        $sql = "DELETE FROM {$queryBuilder->getTable()}";
+        $sql = "DELETE FROM $queryContext->table";
 
-        if (!empty($queryBuilder->getWhere())) {
+        if (!empty($queryContext->where)) {
             $whereParts = [];
-            foreach ($queryBuilder->getWhere() as $key => $value) {
-                $whereParts[] = "$key = {$value}";
+            foreach ($queryContext->where as $key => $value) {
+                $whereParts[] = "$key = $value";
             }
 
             $sql .= " WHERE " . implode(" AND ", $whereParts);

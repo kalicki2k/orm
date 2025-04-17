@@ -2,14 +2,15 @@
 
 namespace ORM\Query\Sql;
 
-use ORM\Query\QueryBuilder;
+use ORM\Drivers\DatabaseDriver;
+use ORM\Query\QueryContext;
 use RuntimeException;
 
 final class UpdateSqlRenderer implements SqlRenderer
 {
-    public function render(QueryBuilder $queryBuilder): string
+    public function render(QueryContext $queryContext, DatabaseDriver $databaseDriver): string
     {
-        $values = $queryBuilder->getValues();
+        $values = $queryContext->values;
 
         if (empty($values)) {
             throw new RuntimeException("No values set for update.");
@@ -17,16 +18,16 @@ final class UpdateSqlRenderer implements SqlRenderer
 
         $setParts = [];
         foreach ($values as $column => $_) {
-            $quoted = $queryBuilder->getDatabaseDriver()->quoteIdentifier($column);
-            $setParts[] = "{$quoted} = :{$column}";
+            $quoted = $databaseDriver->quoteIdentifier($column);
+            $setParts[] = "$quoted = :$column";
         }
 
-        $sql = "UPDATE {$queryBuilder->getTable()} SET " . implode(', ', $setParts);
+        $sql = "UPDATE $queryContext->table SET " . implode(', ', $setParts);
 
-        if (!empty($queryBuilder->getWhere())) {
+        if (!empty($queryContext->where)) {
             $whereParts = [];
-            foreach ($queryBuilder->getWhere() as $key => $value) {
-                $whereParts[] = "$key = {$value}";
+            foreach ($queryContext->where as $key => $value) {
+                $whereParts[] = "$key = $value";
             }
             $sql .= " WHERE " . implode(" AND ", $whereParts);
         }

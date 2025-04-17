@@ -2,16 +2,23 @@
 
 namespace ORM\Query\Builder;
 
+use InvalidArgumentException;
 use ORM\Metadata\MetadataEntity;
 use ORM\Query\QueryBuilder;
 
-final class DeleteBuilder
+final readonly class DeleteBuilder
 {
-    public function apply(QueryBuilder $query, MetadataEntity $metadata, int|string $id): void
+    public function __construct(
+        private WhereBuilder $whereBuilder = new WhereBuilder(),
+    ) {}
+
+    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, int|string|array|null $id): void
     {
-        $query->where(
-            [$metadata->getPrimaryKey() => ':id'],
-            ['id' => $id]
-        );
+        if ($id === null) {
+            throw new InvalidArgumentException("Missing identifier for delete");
+        }
+
+        [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $id);
+        $queryBuilder->where($where, $params);
     }
 }

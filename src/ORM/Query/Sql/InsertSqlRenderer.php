@@ -2,21 +2,22 @@
 
 namespace ORM\Query\Sql;
 
-use ORM\Query\QueryBuilder;
+use ORM\Drivers\DatabaseDriver;
+use ORM\Query\QueryContext;
 
 final class InsertSqlRenderer implements SqlRenderer
 {
-    public function render(QueryBuilder $queryBuilder): string
+    public function render(QueryContext $queryContext, DatabaseDriver $databaseDriver): string
     {
-        $values = $queryBuilder->getValues();
+        $values = $queryContext->values;
         $columns = array_keys($values);
-        $queryBuilder->setParameters($values);
+        $queryContext->parameters = $values;
 
 
         return sprintf(
             "INSERT INTO %s (%s) VALUES (%s)",
-            $queryBuilder->getTable(),
-            implode(', ', array_map([$queryBuilder->getDatabaseDriver(), 'quoteIdentifier'], $columns)),
+            $queryContext->table,
+            implode(', ', array_map([$databaseDriver, 'quoteIdentifier'], $columns)),
             implode(', ', array_map(fn($col) => ":$col", $columns))
         );
     }

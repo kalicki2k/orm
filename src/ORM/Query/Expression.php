@@ -36,6 +36,14 @@ final class Expression
         return new self();
     }
 
+    public function not(): self
+    {
+        $negated = new self();
+        [$sql, $params] = $this->compile();
+
+        return $negated->raw("NOT ($sql[0])", $params);
+    }
+
     /**
      * Starts an AND block with a single = condition.
      *
@@ -75,6 +83,37 @@ final class Expression
         return $this->add("$column = :$column", [$column => $value], "OR");
     }
 
+    public function andNotEq(string $column, mixed $value): self
+    {
+        return $this->add("$column != :$column", [$column => $value]);
+    }
+
+    public function orNotEq(string $column, mixed $value): self
+    {
+        return $this->add("$column != :$column", [$column => $value], "OR");
+    }
+
+
+    public function andLt(string $column, mixed $value): self
+    {
+        return $this->add("$column < :$column", [$column => $value]);
+    }
+
+    public function orLt(string $column, mixed $value): self
+    {
+        return $this->add("$column < :$column", [$column => $value], "OR");
+    }
+
+    public function andLte(string $column, mixed $value): self
+    {
+        return $this->add("$column <= :$column", [$column => $value]);
+    }
+
+    public function orLte(string $column, mixed $value): self
+    {
+        return $this->add("$column <= :$column", [$column => $value], "OR");
+    }
+
     /**
      * Adds a > condition using AND.
      *
@@ -100,6 +139,17 @@ final class Expression
     {
         return $this->add("$column > :$column", [$column => $value], "OR");
     }
+
+    public function andGte(string $column, mixed $value): self
+    {
+        return $this->add("$column >= :$column", [$column => $value]);
+    }
+
+    public function orGte(string $column, mixed $value): self
+    {
+        return $this->add("$column >= :$column", [$column => $value], "OR");
+    }
+
 
     /**
      * Adds a LIKE condition using AND.
@@ -188,6 +238,34 @@ final class Expression
     }
 
     /**
+     * Adds exclusive BETWEEN using AND glue (value > min AND value < max).
+     *
+     * @param string $column
+     * @param mixed $min
+     * @param mixed $max
+     *
+     * @return self
+     */
+    public function andBetweenExclusive(string $column, mixed $min, mixed $max): self
+    {
+        return $this->andGt($column, $min)->andLt($column, $max);
+    }
+
+    /**
+     * Adds exclusive BETWEEN using OR glue (value > min OR value < max).
+     *
+     * @param string $column
+     * @param mixed $min
+     * @param mixed $max
+     *
+     * @return self
+     */
+    public function orBetweenExclusive(string $column, mixed $min, mixed $max): self
+    {
+        return $this->orGt($column, $min)->orLt($column, $max);
+    }
+
+    /**
      * Adds `column IN (...)` with AND glue.
      *
      * @param string $column
@@ -260,6 +338,37 @@ final class Expression
         return $this->add("$column IS NOT NULL", [], $glue);
     }
 
+    public function andExists(string $subquery): self
+    {
+        return $this->add("EXISTS ($subquery)", []);
+    }
+
+    public function orExists(string $subquery): self
+    {
+        return $this->add("EXISTS ($subquery)", [], "OR");
+    }
+
+    public function andNotExists(string $subquery): self
+    {
+        return $this->add("NOT EXISTS ($subquery)", []);
+    }
+
+    public function orNotExists(string $subquery): self
+    {
+        return $this->add("NOT EXISTS ($subquery)", [], "OR");
+    }
+
+
+    public function andNested(Expression $expr): self
+    {
+        return $this->nested($expr, "AND");
+    }
+
+    public function orNested(Expression $expr): self
+    {
+        return $this->nested($expr, "OR");
+    }
+
     /**
      * Adds a custom comparison condition.
      *
@@ -275,6 +384,35 @@ final class Expression
     public function where(string $operator, string $column, mixed $value, string $glue = "AND"): self
     {
         return $this->add("$column $operator :$column", [$column => $value], $glue);
+    }
+
+    /**
+     * Compiles the expression into a SQL fragment and parameters.
+     *
+     * @return array{0: array<int, string>, 1: array<string, mixed>}
+     */
+    public function compile(): array
+    {
+        $sql = [];
+        $params = [];
+
+        foreach ($this->expressions as $i => $expr) {
+            if ($i > 0) {
+                $sql[] = $expr["glue"];
+            }
+            $sql[] = "({$expr["sql"]})";
+            $params = array_merge($params, $expr["params"]);
+        }
+
+        return [
+            [implode(" ", $sql)],
+            $params
+        ];
+    }
+
+    public function raw(string $sql, array $params = [], string $glue = 'AND'): self
+    {
+        return $this->add($sql, $params, $glue);
     }
 
     /**
@@ -313,27 +451,9 @@ final class Expression
         return $this->add($sql, $params, $glue);
     }
 
-    /**
-     * Compiles the expression into a SQL fragment and parameters.
-     *
-     * @return array{0: array<int, string>, 1: array<string, mixed>}
-     */
-    public function compile(): array
+    private function nested(Expression $expr, string $glue): self
     {
-        $sql = [];
-        $params = [];
-
-        foreach ($this->expressions as $i => $expr) {
-            if ($i > 0) {
-                $sql[] = $expr["glue"];
-            }
-            $sql[] = "({$expr["sql"]})";
-            $params = array_merge($params, $expr["params"]);
-        }
-
-        return [
-            ["(" . implode(" ", $sql) . ")"],
-            $params
-        ];
+        [$sql, $params] = $expr->compile();
+        return $this->add($sql[0], $params, $glue);
     }
 }

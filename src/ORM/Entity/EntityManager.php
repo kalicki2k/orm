@@ -10,6 +10,7 @@ use ORM\Cache\ReflectionCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 use ORM\Relation\EagerOneToOneHydrator;
 use ORM\Relation\LazyOneToOneHydrator;
@@ -119,8 +120,9 @@ class EntityManager {
             ->select()
             ->fromMetadata(
                 $metadata,
-                [],
                 fn(string $class) => $this->getMetadata($class),
+                [],
+                null,
                 $options,
             )
             ->execute();
@@ -137,22 +139,23 @@ class EntityManager {
      * Finds and returns an entity instance by its primary key.
      *
      * @param string $entityName The fully qualified class name of the entity.
-     * @param int|string|array|null $criteria
+     * @param Expression|int|string|array|null $criteria
      * @param array $options
      * @return object|null The entity object if found, or null if no match is found.
      *
      * @throws DateMalformedStringException
      * @throws ReflectionException
      */
-    public function findBy(string $entityName, int|string|array|null $criteria = null, array $options = []): ?object
+    public function findBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): ?object
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
                 $metadata,
-                $this->normalizeCriteria($criteria, $metadata),
                 fn(string $class) => $this->getMetadata($class),
+                [],
+                $this->normalizeCriteria($criteria, $metadata),
                 $options,
             )
             ->execute();
@@ -172,8 +175,9 @@ class EntityManager {
             ->select()
             ->fromMetadata(
                 $metadata,
-                [],
                 fn(string $class) => $this->getMetadata($class),
+                [],
+                null,
                 $options
             )
             ->execute();
@@ -187,15 +191,16 @@ class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function streamBy(string $entityName, int|string|array|null $criteria = null, array $options = []): Generator
+    public function streamBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): Generator
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
                 $metadata,
-                $this->normalizeCriteria($criteria, $metadata),
                 fn(string $class) => $this->getMetadata($class),
+                [],
+                $this->normalizeCriteria($criteria, $metadata),
                 $options
             )
             ->execute();
@@ -208,12 +213,22 @@ class EntityManager {
     /**
      * @throws ReflectionException
      */
-    public function countBy(string $entityName, int|string|array|null $criteria = null, array $options = []): int
+    public function countBy(
+        string $entityName,
+        Expression|int|string|array|null
+        $criteria = null,
+        array $options = []
+    ): int
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->count()
-            ->fromMetadata($metadata, $this->normalizeCriteria($criteria, $metadata), null, $options)
+            ->fromMetadata(
+                $metadata,
+                null, [],
+                $this->normalizeCriteria($criteria, $metadata),
+                $options,
+            )
             ->execute();
 
         $result = $statement->fetch();
@@ -243,8 +258,12 @@ class EntityManager {
         return $this->metadataParser->parse($entityName);
     }
 
-    private function normalizeCriteria(int|string|array|null $criteria, MetadataEntity $metadata): array
+    private function normalizeCriteria(Expression|int|string|array|null $criteria, MetadataEntity $metadata): Expression|array
     {
+        if ($criteria instanceof Expression) {
+            return $criteria;
+        }
+
         if (is_null($criteria)) {
             return [];
         }

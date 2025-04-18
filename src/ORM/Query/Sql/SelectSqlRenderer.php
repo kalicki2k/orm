@@ -37,7 +37,7 @@ final class SelectSqlRenderer implements SqlRenderer
         if (!empty($queryContext->where)) {
             $where = [];
             foreach ($queryContext->where as $col => $param) {
-                $where[] = "$col = $param";
+                $where[] = is_int($col) ? $param : "$col = $param";
             }
             $sql .= ' WHERE ' . implode(' AND ', $where);
         }

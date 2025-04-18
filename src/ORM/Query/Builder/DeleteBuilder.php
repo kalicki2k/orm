@@ -2,8 +2,9 @@
 
 namespace ORM\Query\Builder;
 
-use InvalidArgumentException;
+
 use ORM\Metadata\MetadataEntity;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 
 final readonly class DeleteBuilder
@@ -12,7 +13,7 @@ final readonly class DeleteBuilder
         private WhereBuilder $whereBuilder = new WhereBuilder(),
     ) {}
 
-    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, array $criteria): void
+    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, Expression|array $criteria): void
     {
         [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $criteria);
         $queryBuilder->where($where, $params);

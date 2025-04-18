@@ -54,19 +54,21 @@ class QueryBuilder
 
     public function fromMetadata(
         MetadataEntity $metadata,
-        int|string|array|null $payload = null,
         ?callable $resolveMetadata = null,
+        array $values = [],
+        Expression|array|null $criteria = null,
         array $options = [],
-    ): self {
+    ): self
+    {
         $this->table($metadata->getTable(), $metadata->getAlias());
 
         match ($this->queryContext->action) {
-            "count" => $this->countBuilder->apply($this, $metadata, $payload, $options),
-            "select" => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $options),
-            "insert" => $this->insertBuilder->apply($this, $metadata, $payload),
-            "update" => $this->updateBuilder->apply($this, $metadata, $payload),
-            "delete" => $this->deleteBuilder->apply($this, $metadata, $payload),
-            default => throw new RuntimeException("Unsupported action: {$this->queryContext->action}")
+            "select" => $this->selectBuilder->apply($this, $metadata, $resolveMetadata, $criteria, $options),
+            "count"  => $this->countBuilder->apply($this, $metadata, $criteria, $options),
+            "insert" => $this->insertBuilder->apply($this, $metadata, $values),
+            "update" => $this->updateBuilder->apply($this, $metadata, $values),
+            "delete" => $this->deleteBuilder->apply($this, $metadata, $criteria),
+            default  => throw new RuntimeException("Unsupported action: {$this->queryContext->action}"),
         };
 
         return $this;
@@ -137,6 +139,11 @@ class QueryBuilder
     {
         foreach ($whereConditions as $key => $value) {
             [$table, $column] = explode(".", "$key", 2) + [null, null];
+
+            if (is_int($key)) {
+                $this->queryContext->where[] = $value; // value ist der raw SQL string
+                continue;
+            }
 
             if (is_null($column)) {
                 $this->queryContext->where["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;

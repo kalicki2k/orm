@@ -4,6 +4,7 @@ namespace ORM\Query\Builder;
 
 use InvalidArgumentException;
 use ORM\Metadata\MetadataEntity;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 
 final readonly class UpdateBuilder
@@ -12,7 +13,11 @@ final readonly class UpdateBuilder
         private WhereBuilder $whereBuilder = new WhereBuilder()
     ) {}
 
-    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, array $data): void
+    public function apply(
+        QueryBuilder $queryBuilder,
+        MetadataEntity $metadata,
+        array $data,
+    ): void
     {
         $primaryKey = $metadata->getPrimaryKey();
         $primaryValue = $data[$primaryKey] ?? null;

@@ -28,6 +28,7 @@ final readonly class UpdateExecutor
             ->update()
             ->fromMetadata(
                 $this->metadataParser->parse($entity::class),
+                null,
                 $this->metadataParser->extract($entity),
             )
             ->execute();

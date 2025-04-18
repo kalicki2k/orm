@@ -4,6 +4,7 @@ namespace ORM\Query\Builder;
 
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 
 final readonly class SelectBuilder
@@ -16,8 +17,8 @@ final readonly class SelectBuilder
     public function apply(
         QueryBuilder $queryBuilder,
         MetadataEntity $metadata,
-        array $criteria = [],
         ?callable $resolveMetadata = null,
+        Expression|array|null $criteria = null,
         array $options = [],
     ): void {
         $select = [];

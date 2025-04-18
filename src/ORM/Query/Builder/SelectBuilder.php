@@ -16,9 +16,8 @@ final readonly class SelectBuilder
     public function apply(
         QueryBuilder $queryBuilder,
         MetadataEntity $metadata,
-        int|string|array|null $conditions = null,
+        array $criteria = [],
         ?callable $resolveMetadata = null,
-//        array $eagerRelations = [],
         array $options = [],
     ): void {
         $select = [];
@@ -44,11 +43,8 @@ final readonly class SelectBuilder
             $this->joinBuilder->apply($queryBuilder, $metadata, $eagerRelations, $resolveMetadata);
         }
 
-        [$where, $parameters] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $conditions);
+        [$where, $parameters] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $criteria);
         $queryBuilder->where($where, $parameters);
-
-
-        var_dump($options);
         $this->applyOptions($queryBuilder, $options);
     }
 

@@ -7,6 +7,7 @@ use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
 use ORM\Logger\LogHelper;
 use ORM\Metadata\MetadataEntity;
+use ORM\Query\Builder\CountBuilder;
 use ORM\Query\Builder\DeleteBuilder;
 use ORM\Query\Builder\InsertBuilder;
 use ORM\Query\Builder\SelectBuilder;
@@ -26,6 +27,7 @@ class QueryBuilder
     public function __construct(
         private readonly DatabaseDriver $databaseDriver,
         private readonly ?LoggerInterface $logger = null,
+        private readonly CountBuilder $countBuilder = new CountBuilder(),
         private readonly SelectBuilder $selectBuilder = new SelectBuilder(),
         private readonly InsertBuilder $insertBuilder = new InsertBuilder(),
         private readonly UpdateBuilder $updateBuilder = new UpdateBuilder(),
@@ -54,14 +56,13 @@ class QueryBuilder
         MetadataEntity $metadata,
         int|string|array|null $payload = null,
         ?callable $resolveMetadata = null,
-//        array $eagerRelations = [],
         array $options = [],
     ): self {
         $this->table($metadata->getTable(), $metadata->getAlias());
 
         match ($this->queryContext->action) {
+            "count" => $this->countBuilder->apply($this, $metadata, $payload, $options),
             "select" => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $options),
-//            "select" => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $eagerRelations, $options),
             "insert" => $this->insertBuilder->apply($this, $metadata, $payload),
             "update" => $this->updateBuilder->apply($this, $metadata, $payload),
             "delete" => $this->deleteBuilder->apply($this, $metadata, $payload),
@@ -80,6 +81,12 @@ class QueryBuilder
             ? "$tableQuoted AS " . $this->databaseDriver->quoteIdentifier($alias)
             : $tableQuoted;
 
+        return $this;
+    }
+
+    public function count(): self
+    {
+        $this->queryContext->action = "count";
         return $this;
     }
 

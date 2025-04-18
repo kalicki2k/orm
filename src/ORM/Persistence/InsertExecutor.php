@@ -27,7 +27,7 @@ final readonly class InsertExecutor
 
         $lastInsertId = new QueryBuilder($this->databaseDriver, $this->logger)
             ->insert()
-            ->fromMetadata($metadata, $data)
+            ->fromMetadata($metadata, null,  $data)
             ->execute();
 
         if ($metadata->isPrimaryKeyGenerated()) {

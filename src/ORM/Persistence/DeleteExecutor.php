@@ -36,7 +36,7 @@ final readonly class DeleteExecutor
 
         new QueryBuilder($this->databaseDriver, $this->logger)
             ->delete()
-            ->fromMetadata($metadata, [$primaryKeyName => $id])
+            ->fromMetadata($metadata, null, [], [$primaryKeyName => $id])
             ->execute();
     }
 }

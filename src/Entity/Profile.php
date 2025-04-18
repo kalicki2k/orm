@@ -40,9 +40,10 @@ class Profile extends EntityBase
         return $this->bio;
     }
 
-    public function setBio(?string $bio): void
+    public function setBio(?string $bio): self
     {
         $this->bio = $bio;
+        return $this;
     }
 
     public function getUser(): ?User
@@ -50,9 +51,10 @@ class Profile extends EntityBase
         return $this->user;
     }
 
-    public function setUser(?User $user): void
+    public function setUser(?User $user): self
     {
         $this->user = $user;
+        return $this;
     }
 
     public function jsonSerialize(): mixed

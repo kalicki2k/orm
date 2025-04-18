@@ -3,6 +3,7 @@
 namespace ORM\Query\Builder;
 
 use ORM\Metadata\MetadataEntity;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 
 final class CountBuilder
@@ -10,7 +11,7 @@ final class CountBuilder
     public function apply(
         QueryBuilder $queryBuilder,
         MetadataEntity $metadata,
-        array $criteria,
+        Expression|array|null $criteria = null,
         array $options = []
     ): void {
         $alias = $metadata->getAlias();

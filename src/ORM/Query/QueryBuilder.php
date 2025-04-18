@@ -2,6 +2,7 @@
 
 namespace ORM\Query;
 
+use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
 use ORM\Logger\LogHelper;
@@ -53,15 +54,17 @@ class QueryBuilder
         MetadataEntity $metadata,
         int|string|array|null $payload = null,
         ?callable $resolveMetadata = null,
-        array $eagerRelations = []
+//        array $eagerRelations = [],
+        array $options = [],
     ): self {
         $this->table($metadata->getTable(), $metadata->getAlias());
 
         match ($this->queryContext->action) {
-            'select' => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $eagerRelations),
-            'insert' => $this->insertBuilder->apply($this, $metadata, $payload),
-            'update' => $this->updateBuilder->apply($this, $metadata, $payload),
-            'delete' => $this->deleteBuilder->apply($this, $metadata, $payload),
+            "select" => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $options),
+//            "select" => $this->selectBuilder->apply($this, $metadata, $payload, $resolveMetadata, $eagerRelations, $options),
+            "insert" => $this->insertBuilder->apply($this, $metadata, $payload),
+            "update" => $this->updateBuilder->apply($this, $metadata, $payload),
+            "delete" => $this->deleteBuilder->apply($this, $metadata, $payload),
             default => throw new RuntimeException("Unsupported action: {$this->queryContext->action}")
         };
 
@@ -136,6 +139,122 @@ class QueryBuilder
         }
 
         $this->queryContext->parameters = $parameters;
+        return $this;
+    }
+
+    /**
+     * Sets the LIMIT for pagination.
+     *
+     * Limits the number of records returned by the query.
+     *
+     * @param int $limit The maximum number of records to return. Must be >= 0.
+     *
+     * @return $this
+     *
+     * @throws InvalidArgumentException if the limit is negative
+     *
+     * @example
+     *   ->limit(10)
+     */
+    public function limit(int $limit): self
+    {
+        if ($limit < 0) {
+            throw new InvalidArgumentException("Limit must be non-negative.");
+        }
+
+        $this->queryContext->limit = $limit;
+        return $this;
+    }
+
+    /**
+     * Sets the OFFSET for pagination.
+     *
+     * Skips the first N records before starting to return results.
+     *
+     * @param int $offset The number of records to skip. Must be >= 0.
+     *
+     * @return $this
+     *
+     * @throws InvalidArgumentException if the offset is negative
+     *
+     * @example
+     *   ->offset(20)
+     */
+    public function offset(int $offset): self
+    {
+        if ($offset < 0) {
+            throw new InvalidArgumentException("Offset must be non-negative.");
+        }
+
+        $this->queryContext->offset = $offset;
+        return $this;
+    }
+
+    /**
+     * Defines the ORDER BY clause for the query.
+     *
+     * Accepts either:
+     * - a single column name (default direction ASC),
+     * - an array of column names (all ASC),
+     * - or an associative array with direction per column.
+     *
+     * @param string|array<int|string, string>|array<int, string> $orderBy
+     *
+     * @return $this
+     *
+     * @example
+     *   ->orderBy("created_at")
+     *   ->orderBy(["created_at" => "DESC", "username" => "ASC"])
+     *   ->orderBy(["created_at", "username"]) // both ASC
+     */
+    public function orderBy(array|string $orderBy): self
+    {
+        if (is_string($orderBy)) {
+            $orderBy = [$orderBy => 'ASC'];
+        }
+
+        $normalized = [];
+        foreach ($orderBy as $key => $value) {
+            if (is_int($key)) {
+                $normalized[$value] = 'ASC';
+            } else {
+                $normalized[$key] = strtoupper($value) === 'DESC' ? 'DESC' : 'ASC';
+            }
+        }
+
+        $this->queryContext->orderBy = $normalized;
+        return $this;
+    }
+
+    /**
+     * Defines the GROUP BY clause for the query.
+     *
+     * Accepts a single column or an array of columns.
+     *
+     * @param string|array<string> $groupBy Column name or list of column names
+     *
+     * @return $this
+     *
+     * @example
+     *   ->groupBy("status")
+     *   ->groupBy(["status", "type"])
+     */
+    public function groupBy(array|string $groupBy): self
+    {
+        $this->queryContext->groupBy = is_array($groupBy) ? $groupBy : [$groupBy];
+        return $this;
+    }
+
+    /**
+     * Enables or disables the DISTINCT flag for the query.
+     *
+     * @param bool $flag Whether to use DISTINCT in the SELECT clause.
+     *
+     * @return $this
+     */
+    public function distinct(bool $flag = true): self
+    {
+        $this->queryContext->distinct = $flag;
         return $this;
     }
 

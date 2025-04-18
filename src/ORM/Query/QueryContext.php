@@ -73,6 +73,22 @@ final class QueryContext
      */
     public array $parameters = [];
 
+    /** @var int|null Maximum number of results */
+    public ?int $limit = null;
+
+    /** @var int|null Number of rows to skip */
+    public ?int $offset = null;
+
+    /** @var array<string, 'ASC'|'DESC'> Column => direction */
+    public array $orderBy = [];
+
+    /** @var string[] GROUP BY column names */
+    public array $groupBy = [];
+
+    /** @var bool Whether to use SELECT DISTINCT */
+    public bool $distinct = false;
+
+    /** @return bool Returns true if we should use aliases in SQL (i.e. SELECT u.id AS u_id) */
     public function useAlias(): bool
     {
         return $this->action === 'select' && !empty($this->alias);

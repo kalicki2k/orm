@@ -1,37 +1,44 @@
-FROM composer:latest AS builder
+FROM php:8.4-cli-bookworm AS base
 
-ARG APP_ENV=production
-
-RUN apk update && apk add --no-cache libpq-dev
-
-WORKDIR /app
-
-COPY --chown=www-data:www-data composer.json /app/
-COPY --chown=www-data:www-data ../src /app/src
-
-COPY --chown=www-data:www-data tests /app/tests
-COPY --chown=www-data:www-data phpunit.xml /app/phpunit.xml
-
-RUN if [ "${APP_ENV}" = "development" ]; then \
-    composer install; \
-    else \
-    composer install --no-dev --optimize-autoloader --prefer-dist; \
-    fi
-
-FROM php:8.4-cli-bookworm
-
-ARG ENV=prod
-
-ENV TZ=Europe/Berlin
-ENV APP_ENV=${APP_ENV}
+ARG TZ=Europe/Berlin
+ENV TZ=${TZ}
+ENV APP_ENV=production
 
 RUN apt-get update \
-    && apt-get install -y git tzdata libpq-dev \
+    && apt-get install -y git unzip libpq-dev tzdata libzip-dev \
+    && pecl install redis \
+    && docker-php-ext-enable redis \
+    && docker-php-ext-install pdo pdo_pgsql pgsql mysqli pdo_mysql \
     && ln -snf /usr/share/zoneinfo/${TZ} /etc/localtime \
     && echo ${TZ} > /etc/timezone \
     && echo "date.timezone=${TZ}" > /usr/local/etc/php/conf.d/timezone.ini \
-    && docker-php-ext-install pgsql mysqli pdo pdo_mysql pdo_pgsql \
-    && rm -rf /var/lib/apt/list/*
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS builder
+
+ARG APP_ENV=production
+ENV APP_ENV=${APP_ENV}
+
+WORKDIR /app
+
+#RUN groupadd -g 33 www-data && useradd -u 33 -g www-data www-data
+
+COPY --chown=www-data:www-data composer.json /app/
+COPY --chown=www-data:www-data ../src /app/src
+COPY --chown=www-data:www-data tests /app/tests
+COPY --chown=www-data:www-data phpunit.xml /app/phpunit.xml
+
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/bin --filename=composer \
+    && if [ "${APP_ENV}" = "development" ]; then \
+         composer install; \
+       else \
+         composer install --no-dev --optimize-autoloader --prefer-dist; \
+       fi
+
+FROM base AS final
+
+ARG APP_ENV=production
+ENV APP_ENV=${APP_ENV}
 
 WORKDIR /app
 

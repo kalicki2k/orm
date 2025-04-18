@@ -6,7 +6,6 @@ use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
 use ORM\Query\QueryBuilder;
-use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
 
@@ -34,11 +33,8 @@ final readonly class InsertExecutor
         if ($metadata->isPrimaryKeyGenerated()) {
             $primaryKey = $metadata->getPrimaryKey();
 
-            $reflection = ReflectionCacheInstance::getInstance()
-                ->get($entity)
-                ->getProperty($primaryKey);
-
-            $reflection->setValue($entity, $lastInsertId);
+            $reflection = $this->metadataParser->getReflectionCache();
+            $reflection->getProperty($entity, $primaryKey)->setValue($entity, $lastInsertId);
         }
 
         $entity->__markPersisted($this->metadataParser->extract($entity));

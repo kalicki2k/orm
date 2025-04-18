@@ -10,13 +10,14 @@ Powered by native attributes, a modular architecture, and zero magic.
 ✅ PHP 8.4 attributes for entity mapping  
 ✅ Clean architecture with responsibility-separated components  
 ✅ Modular QueryBuilder with pluggable builders & SQL renderers  
-✅ Support for insert, update, delete, find, streamAll, streamBy  
+✅ Support for insert, update, delete, find, streamAll, streamBy, countBy  
 ✅ Lazy & Eager loading with FetchType enum  
 ✅ OneToOne support incl. JoinColumn handling  
 ✅ UnitOfWork with cascade persistence/removal  
 ✅ StreamWrapper for CRUD via PHP streams (`fopen('orm://...')`)  
 ✅ PSR-3 Logging (Monolog or custom)  
-✅ Reflection caching for blazing speed
+✅ Reflection caching via swappable `ReflectionCache`  
+✅ Metadata caching via pluggable interface (PSR-16 compatible)  
 
 ---
 
@@ -42,12 +43,32 @@ DB_PASSWORD=secret
 use ORM\Drivers\PDODriver;
 use ORM\Entity\EntityManager;
 use ORM\Logger\LoggerFactory;
+use ORM\Cache\InMemoryMetadataCache;
+use ORM\Metadata\MetadataParser;
+
+$entityManager = new EntityManager(
+    PDODriver::default(),
+    new MetadataParser(new InMemoryMetadataCache()),
+    LoggerFactory::create()
+);
+```
+
+To enable Redis cache:
+
+```php
+use ORM\Cache\RedisMetadataCache;
 
 $entityManager = new EntityManager(
     PDODriver::fromEnv(),
-    new \ORM\Metadata\MetadataParser(),
+    new MetadataParser(new RedisMetadataCache()),
     LoggerFactory::create()
 );
+```
+
+Or switch at runtime:
+
+```php
+$parser = (new MetadataParser())->withCache(new RedisMetadataCache());
 ```
 
 ---
@@ -139,16 +160,17 @@ unlink("orm://Entity\\User?id=1");
 
 ## 🧱 Architecture
 
-| Component | Responsibility |
-|----------|----------------|
-| `EntityManager` | orchestrates all ORM operations |
-| `UnitOfWork` | tracks inserts/updates/deletes with cascade handling |
-| `MetadataParser` | reads PHP attributes into metadata |
-| `QueryBuilder` | fluent API for query construction |
-| `InsertBuilder` etc. | builds metadata-based query contexts |
-| `SelectSqlRenderer` etc. | renders SQL based on QueryBuilder state |
-| `StreamWrapper` | CRUD via PHP stream API |
-| `ReflectionCacheInstance` | optimizes performance by caching reflection |
+| Component             | Responsibility                                   |
+|-----------------------|--------------------------------------------------|
+| `EntityManager`       | orchestrates all ORM operations                  |
+| `UnitOfWork`          | tracks inserts/updates/deletes with cascades     |
+| `MetadataParser`      | reads PHP attributes into metadata               |
+| `QueryBuilder`        | fluent API for query construction                |
+| `*Builder`            | builds query context based on metadata           |
+| `*SqlRenderer`        | renders SQL based on QueryBuilder                |
+| `StreamWrapper`       | enables PHP stream API for ORM                   |
+| `ReflectionCache`     | pluggable strategy for caching reflection        |
+| `MetadataCache`       | pluggable cache layer for parsed metadata        |
 
 ---
 
@@ -157,6 +179,7 @@ unlink("orm://Entity\\User?id=1");
 - PHP 8.4+
 - PDO
 - Composer
+- Optional: Redis / PSR-16 cache pool
 
 ---
 
@@ -166,17 +189,19 @@ unlink("orm://Entity\\User?id=1");
 - [x] JoinColumn + mappedBy logic
 - [x] Modular QueryBuilder
 - [x] SQL Renderer Strategy
+- [x] Redis + PSR-16 metadata cache support
+- [x] ReflectionCache abstraction
 - [ ] OneToMany / ManyToOne / ManyToMany
-- [ ] QueryContext abstraction
 - [ ] CLI tooling (generate entities, run migrations)
 - [ ] Schema sync / migration diffing
 - [ ] Type coercion (enum, datetime, uuid, etc.)
 - [ ] Soft deletes
-- [ ] ExpressionBuilder for where clauses
-- [ ] Test coverage for UoW + Hydrators + Builders
+- [ ] ExpressionBuilder for complex where clauses
+- [ ] Test coverage for UnitOfWork, Hydrators, Builders
 
 ---
 
 ## 📄 License
 
 MIT
+

@@ -23,7 +23,7 @@ final readonly class UpdateBuilder
 
         unset($data[$primaryKey]);
         $queryBuilder->values($data);
-        [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $primaryValue);
+        [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), [$primaryKey => $primaryValue]);
         $queryBuilder->where($where, $params);
     }
 }

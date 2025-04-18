@@ -13,8 +13,8 @@ use RuntimeException;
 final readonly class DeleteExecutor
 {
     public function __construct(
-        private DatabaseDriver   $databaseDriver,
-        private MetadataParser   $metadataParser,
+        private DatabaseDriver $databaseDriver,
+        private MetadataParser $metadataParser,
         private ?LoggerInterface $logger = null,
     ) {}
 
@@ -27,9 +27,8 @@ final readonly class DeleteExecutor
     {
         $metadata = $this->metadataParser->parse($entity::class);
         $data = $this->metadataParser->extract($entity);
-
-        $primaryKey = $metadata->getPrimaryKey();
-        $id = $data[$primaryKey] ?? null;
+        $primaryKeyName = $metadata->getPrimaryKey();
+        $id = $data[$primaryKeyName] ?? null;
 
         if ($id === null) {
             throw new RuntimeException("Cannot delete entity without identifier.");
@@ -37,7 +36,7 @@ final readonly class DeleteExecutor
 
         new QueryBuilder($this->databaseDriver, $this->logger)
             ->delete()
-            ->fromMetadata($metadata, $id)
+            ->fromMetadata($metadata, [$primaryKeyName => $id])
             ->execute();
     }
 }

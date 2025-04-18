@@ -103,6 +103,16 @@ class PDODriver implements DatabaseDriver
      */
     public function quoteIdentifier(string $name): string
     {
+        // If it looks like a SQL function call or *
+        if (
+            $name === '*' ||
+            str_contains($name, '(') || // function()
+            str_contains($name, '.') || // table.column
+            preg_match('/^\s*[A-Z]+\(/', $name) // e.g. COUNT(
+        ) {
+            return $name;
+        }
+
         return "`$name`";
     }
 }

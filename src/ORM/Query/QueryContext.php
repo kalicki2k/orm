@@ -13,7 +13,7 @@ namespace ORM\Query;
  * - JOIN clauses
  * - named SQL parameters
  *
- * @see \ORM\Query\QueryBuilder
+ * @see QueryBuilder
  */
 final class QueryContext
 {

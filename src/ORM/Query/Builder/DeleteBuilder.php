@@ -12,13 +12,9 @@ final readonly class DeleteBuilder
         private WhereBuilder $whereBuilder = new WhereBuilder(),
     ) {}
 
-    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, int|string|array|null $id): void
+    public function apply(QueryBuilder $queryBuilder, MetadataEntity $metadata, array $criteria): void
     {
-        if ($id === null) {
-            throw new InvalidArgumentException("Missing identifier for delete");
-        }
-
-        [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $id);
+        [$where, $params] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $criteria);
         $queryBuilder->where($where, $params);
     }
 }

@@ -134,34 +134,28 @@ readonly class EntityManager {
      * Finds and returns an entity instance by its primary key.
      *
      * @param string $entityName The fully qualified class name of the entity.
-     * @param int|string|array|null $conditions The primary key value or an associative array of key-value pairs for composite keys.
-     * @param array $relations
+     * @param int|string|array|null $criteria
+     * @param array $options
      * @return object|null The entity object if found, or null if no match is found.
      *
-     * @throws InvalidArgumentException If the entity does not have a primary key defined.
      * @throws DateMalformedStringException
      * @throws ReflectionException
      */
-    public function findBy(string $entityName, int|string|array|null $conditions = null, array $options = []): ?object
+    public function findBy(string $entityName, int|string|array|null $criteria = null, array $options = []): ?object
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
                 $metadata,
-                $conditions,
+                $this->normalizeCriteria($criteria, $metadata),
                 fn(string $class) => $this->getMetadata($class),
                 $options,
             )
             ->execute();
 
         $data = $statement->fetch();
-
-        if (!$data) {
-            return null;
-        }
-
-        return $this->hydrateEntity($metadata, $data);
+        return $data ? $this->hydrateEntity($metadata, $data) : null;
     }
 
     /**
@@ -190,14 +184,14 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function streamBy(string $entityName, array $criteria = [], array $options = []): Generator
+    public function streamBy(string $entityName, int|string|array|null $criteria = null, array $options = []): Generator
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
                 $metadata,
-                $criteria,
+                $this->normalizeCriteria($criteria, $metadata),
                 fn(string $class) => $this->getMetadata($class),
                 $options
             )
@@ -207,6 +201,22 @@ readonly class EntityManager {
             yield $this->hydrateEntity($metadata, $row);
         }
     }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function countBy(string $entityName, int|string|array|null $criteria = null, array $options = []): int
+    {
+        $metadata = $this->getMetadata($entityName);
+        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->count()
+            ->fromMetadata($metadata, $this->normalizeCriteria($criteria, $metadata), null, $options)
+            ->execute();
+
+        $result = $statement->fetch();
+        return (int) ($result['count'] ?? 0);
+    }
+
 
     /**
      * @throws ReflectionException
@@ -228,6 +238,19 @@ readonly class EntityManager {
     public function getMetadata(string $entityName): MetadataEntity
     {
         return $this->metadataParser->parse($entityName);
+    }
+
+    private function normalizeCriteria(int|string|array|null $criteria, MetadataEntity $metadata): array
+    {
+        if (is_null($criteria)) {
+            return [];
+        }
+
+        if (is_array($criteria)) {
+            return $criteria;
+        }
+
+        return [$metadata->getPrimaryKey() => $criteria];
     }
 
     /**

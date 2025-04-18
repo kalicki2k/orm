@@ -18,7 +18,8 @@ final readonly class SelectBuilder
         MetadataEntity $metadata,
         int|string|array|null $conditions = null,
         ?callable $resolveMetadata = null,
-        array $eagerRelations = [],
+//        array $eagerRelations = [],
+        array $options = [],
     ): void {
         $select = [];
         foreach ($metadata->getColumns() as $column) {
@@ -39,10 +40,24 @@ final readonly class SelectBuilder
         $queryBuilder->select($select);
 
         if ($resolveMetadata) {
+            $eagerRelations = $options["relations"] ?? [];
             $this->joinBuilder->apply($queryBuilder, $metadata, $eagerRelations, $resolveMetadata);
         }
 
         [$where, $parameters] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $conditions);
         $queryBuilder->where($where, $parameters);
+
+
+        var_dump($options);
+        $this->applyOptions($queryBuilder, $options);
+    }
+
+    private function applyOptions(QueryBuilder $queryBuilder, array $options): void
+    {
+        if (isset($options["limit"])) $queryBuilder->limit($options["limit"]);
+        if (isset($options["offset"])) $queryBuilder->offset($options["offset"]);
+        if (isset($options["orderBy"])) $queryBuilder->orderBy($options["orderBy"]);
+        if (isset($options["groupBy"])) $queryBuilder->groupBy($options["groupBy"]);
+        if (!empty($options["distinct"])) $queryBuilder->distinct();
     }
 }

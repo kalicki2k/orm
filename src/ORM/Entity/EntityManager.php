@@ -109,7 +109,7 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function findAll(string $entityName, array $relations = []): array
+    public function findAll(string $entityName, array $options = []): array
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
@@ -118,7 +118,7 @@ readonly class EntityManager {
                 $metadata,
                 [],
                 fn(string $class) => $this->getMetadata($class),
-                $relations
+                $options,
             )
             ->execute();
 
@@ -142,7 +142,7 @@ readonly class EntityManager {
      * @throws DateMalformedStringException
      * @throws ReflectionException
      */
-    public function findBy(string $entityName, int|string|array|null $conditions = null, array $relations = []): ?object
+    public function findBy(string $entityName, int|string|array|null $conditions = null, array $options = []): ?object
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
@@ -151,7 +151,7 @@ readonly class EntityManager {
                 $metadata,
                 $conditions,
                 fn(string $class) => $this->getMetadata($class),
-                $relations,
+                $options,
             )
             ->execute();
 
@@ -168,7 +168,7 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function streamAll(string $entityName, array $relations = []): Generator
+    public function streamAll(string $entityName, array $options = []): Generator
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
@@ -177,7 +177,7 @@ readonly class EntityManager {
                 $metadata,
                 [],
                 fn(string $class) => $this->getMetadata($class),
-                $relations
+                $options
             )
             ->execute();
 
@@ -190,7 +190,7 @@ readonly class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function streamBy(string $entityName, array $criteria = [], array $relations = []): Generator
+    public function streamBy(string $entityName, array $criteria = [], array $options = []): Generator
     {
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
@@ -199,7 +199,7 @@ readonly class EntityManager {
                 $metadata,
                 $criteria,
                 fn(string $class) => $this->getMetadata($class),
-                $relations
+                $options
             )
             ->execute();
 

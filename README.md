@@ -1,3 +1,4 @@
+
 # ORM (PHP Attribute-Based Object-Relational Mapper)
 
 A fast, minimal, attribute-based ORM for PHP 8.4+, built for performance and readability.  
@@ -10,6 +11,7 @@ Powered by native attributes, a modular architecture, and zero magic.
 ✅ PHP 8.4 attributes for entity mapping  
 ✅ Clean architecture with responsibility-separated components  
 ✅ Modular QueryBuilder with pluggable builders & SQL renderers  
+✅ `ExpressionBuilder` for powerful WHERE conditions  
 ✅ Support for insert, update, delete, find, streamAll, streamBy, countBy  
 ✅ Lazy & Eager loading with FetchType enum  
 ✅ OneToOne support incl. JoinColumn handling  
@@ -137,6 +139,22 @@ $found = $entityManager->findBy(User::class, 1);
 
 ---
 
+## 🔍 Advanced Queries with ExpressionBuilder
+
+```php
+use ORM\Query\Expression;
+
+$expr = Expression::and()
+    ->andLike("email", "%@example.com")
+    ->orEq("username", "admin")
+    ->andBetweenExclusive("age", 18, 65)
+    ->andNotIn("status", ["banned", "disabled"]);
+
+$count = $entityManager->countBy(User::class, $expr);
+```
+
+---
+
 ## 🔁 StreamWrapper
 
 ```php
@@ -171,6 +189,7 @@ unlink("orm://Entity\\User?id=1");
 | `StreamWrapper`       | enables PHP stream API for ORM                   |
 | `ReflectionCache`     | pluggable strategy for caching reflection        |
 | `MetadataCache`       | pluggable cache layer for parsed metadata        |
+| `Expression`          | powerful WHERE clause construction               |
 
 ---
 
@@ -185,23 +204,23 @@ unlink("orm://Entity\\User?id=1");
 
 ## 🧠 What's next?
 
-- [x] Lazy & Eager loading
-- [x] JoinColumn + mappedBy logic
-- [x] Modular QueryBuilder
-- [x] SQL Renderer Strategy
-- [x] Redis + PSR-16 metadata cache support
-- [x] ReflectionCache abstraction
-- [ ] OneToMany / ManyToOne / ManyToMany
-- [ ] CLI tooling (generate entities, run migrations)
-- [ ] Schema sync / migration diffing
-- [ ] Type coercion (enum, datetime, uuid, etc.)
-- [ ] Soft deletes
-- [ ] ExpressionBuilder for complex where clauses
-- [ ] Test coverage for UnitOfWork, Hydrators, Builders
+- [x] Lazy & Eager loading  
+- [x] JoinColumn + mappedBy logic  
+- [x] Modular QueryBuilder  
+- [x] SQL Renderer Strategy  
+- [x] Redis + PSR-16 metadata cache support  
+- [x] ReflectionCache abstraction  
+- [x] ExpressionBuilder (v1)  
+- [ ] OneToMany / ManyToOne / ManyToMany  
+- [ ] CLI tooling (generate entities, run migrations)  
+- [ ] Schema sync / migration diffing  
+- [ ] Type coercion (enum, datetime, uuid, etc.)  
+- [ ] Soft deletes  
+- [ ] Advanced SQL Expressions (JSON, MATCH, HAVING, etc.)  
+- [ ] Test coverage for UnitOfWork, Hydrators, Builders ...
 
 ---
 
 ## 📄 License
 
 MIT
-

@@ -5,7 +5,7 @@ namespace ORM\Cache;
 use ORM\Metadata\MetadataEntity;
 use Redis;
 
-readonly class RedisMetadataCache implements MetadataCacheInterface
+readonly class RedisMetadataCache implements MetadataCache
 {
     public function __construct(private Redis $redis, private int $ttl = 3600) {}
 

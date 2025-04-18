@@ -3,7 +3,7 @@
 namespace ORM\Cache;
 
 use ORM\Metadata\MetadataEntity;
-class InMemoryMetadataCache implements MetadataCacheInterface
+class InMemoryMetadataCache implements MetadataCache
 {
     private array $cache = [];
 

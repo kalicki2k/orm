@@ -6,23 +6,25 @@ use InvalidArgumentException;
 use ORM\Attributes\Entity;
 use ORM\Attributes\Table;
 use ORM\Cache\InMemoryMetadataCache;
-use ORM\Cache\MetadataCacheInterface;
+use ORM\Cache\InMemoryReflectionCache;
+use ORM\Cache\MetadataCache;
+use ORM\Cache\ReflectionCache;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\AttributeHandler\ColumnAttributeHandler;
 use ORM\Metadata\AttributeHandler\IdAttributeHandler;
 use ORM\Metadata\AttributeHandler\MetadataAttributeHandler;
 use ORM\Metadata\AttributeHandler\OneToOneAttributeHandler;
-use ORM\Util\ReflectionCacheInstance;
 use ReflectionException;
 
 class MetadataParser
 {
     /** @var MetadataAttributeHandler[] */
     private array $handlers;
+
     public function __construct(
-        private MetadataCacheInterface $cache = new InMemoryMetadataCache()
-    )
-    {
+        private MetadataCache $metadataCache = new InMemoryMetadataCache(),
+        private ReflectionCache $reflectionCache = new InMemoryReflectionCache(),
+    ) {
         $this->handlers = [
             new IdAttributeHandler(),
             new ColumnAttributeHandler(),
@@ -30,10 +32,26 @@ class MetadataParser
         ];
     }
 
-    public function withCache(MetadataCacheInterface $cache): self
+    public function with(MetadataCache|ReflectionCache $instance): self
     {
-        $this->cache = $cache;
-        return $this;
+        $map = [
+            MetadataCache::class => fn() => $this->metadataCache = $instance,
+            ReflectionCache::class => fn() => $this->reflectionCache = $instance,
+        ];
+
+        foreach ($map as $interface => $apply) {
+            if ($instance instanceof $interface) {
+                $apply();
+                return $this;
+            }
+        }
+
+        throw new InvalidArgumentException("Unsupported cache instance: " . $instance::class);
+    }
+
+    public function getReflectionCache(): ReflectionCache
+    {
+        return $this->reflectionCache;
     }
 
     /**
@@ -44,7 +62,6 @@ class MetadataParser
     public function extract(EntityBase $entity, bool $excludePrimaryKey = false): array
     {
         $metadata = $this->parse($entity::class);
-        $reflection = ReflectionCacheInstance::getInstance();
 
         $data = [];
 
@@ -56,7 +73,7 @@ class MetadataParser
                 continue;
             }
 
-            $data[$column['name']] = $reflection->getValue($entity, $property);
+            $data[$column['name']] = $this->reflectionCache->getProperty($entity, $property)->getValue($entity);
         }
 
         return $data;
@@ -69,11 +86,11 @@ class MetadataParser
      */
     public function parse(string $entityName): MetadataEntity
     {
-        if ($cached = $this->cache->get($entityName)) {
+        if ($cached = $this->metadataCache->get($entityName)) {
             return $cached;
         }
 
-        $reflection = ReflectionCacheInstance::getInstance()->get($entityName);
+        $reflection = $this->reflectionCache->getClass($entityName);
         $entityAttributes = $reflection->getAttributes(Entity::class);
         $tableAttributes = $reflection->getAttributes(Table::class);
 
@@ -94,7 +111,7 @@ class MetadataParser
             }
         }
 
-        $this->cache->set($entityName, $metadataEntity);
+        $this->metadataCache->set($entityName, $metadataEntity);
         return $metadataEntity;
     }
 }

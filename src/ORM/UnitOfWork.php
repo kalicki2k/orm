@@ -10,11 +10,8 @@ use ORM\Persistence\CascadeHandler;
 use ORM\Persistence\DeleteExecutor;
 use ORM\Persistence\InsertExecutor;
 use ORM\Persistence\UpdateExecutor;
-use ORM\Query\QueryBuilder;
-use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
-use RuntimeException;
 use WeakMap;
 
 class UnitOfWork
@@ -55,7 +52,7 @@ class UnitOfWork
         }
 
         $metadata = $this->metadataParser->parse($entity::class);
-        $reflection = ReflectionCacheInstance::getInstance();
+        $reflection = $this->metadataParser->getReflectionCache();
 
         foreach ($metadata->getColumns() as $property => $column) {
             $default = $column['attributes']->default ?? null;

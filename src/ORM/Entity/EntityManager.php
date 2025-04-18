@@ -6,6 +6,7 @@ use DateMalformedStringException;
 use DateTimeImmutable;
 use Generator;
 use InvalidArgumentException;
+use ORM\Cache\ReflectionCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
@@ -14,7 +15,6 @@ use ORM\Relation\EagerOneToOneHydrator;
 use ORM\Relation\LazyOneToOneHydrator;
 use ORM\Relation\RelationHydrator;
 use ORM\UnitOfWork;
-use ORM\Util\ReflectionCacheInstance;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
 
@@ -23,11 +23,13 @@ use ReflectionException;
  *
  * The EntityManager handles querying, persisting, and retrieving entity objects.
  */
-readonly class EntityManager {
+class EntityManager {
     /** @var RelationHydrator[] */
     private array $relationHydrators;
 
     private UnitOfWork $unitOfWork;
+
+    private ReflectionCache $reflectionCache;
 
     /**
      * EntityManager constructor.
@@ -37,10 +39,11 @@ readonly class EntityManager {
      * @param LoggerInterface|null $logger Optional PSR-3 logger for SQL or debug output.
      */
     public function __construct(
-        private DatabaseDriver $databaseDriver,
-        private MetadataParser $metadataParser,
-        private ?LoggerInterface $logger = null,
+        private readonly DatabaseDriver $databaseDriver,
+        private readonly MetadataParser $metadataParser,
+        private readonly ?LoggerInterface $logger = null,
     ) {
+        $this->reflectionCache = $metadataParser->getReflectionCache(); // ✨
         $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->logger);
         $this->relationHydrators = [
             new LazyOneToOneHydrator($this),
@@ -259,8 +262,10 @@ readonly class EntityManager {
      */
     public function hydrateEntity(MetadataEntity $metadata, array $data): EntityBase
     {
-        $reflection = ReflectionCacheInstance::getInstance();
-        $entity = $reflection->get($metadata->getEntityName())->newInstanceWithoutConstructor();
+        $entity = $this
+            ->reflectionCache
+            ->getClass($metadata->getEntityName())
+            ->newInstanceWithoutConstructor();
 
         $this->hydrateColumns($entity, $metadata, $data);
         $this->hydrateRelations($entity, $metadata, $data);
@@ -273,12 +278,9 @@ readonly class EntityManager {
 
     /**
      * @throws DateMalformedStringException
-     * @throws ReflectionException
      */
     private function hydrateColumns(EntityBase $entity, MetadataEntity $metadata, array $data): void
     {
-        $reflection = ReflectionCacheInstance::getInstance();
-
         foreach ($metadata->getColumns() as $property => $column) {
             $name = "{$metadata->getAlias()}_{$column["name"]}";
 
@@ -287,7 +289,8 @@ readonly class EntityManager {
             }
 
             $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
-            $reflection->setValue($entity, $property, $value);
+            $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $value);
+
         }
     }
 
@@ -310,18 +313,14 @@ readonly class EntityManager {
         };
     }
 
-    /**
-     * @throws ReflectionException
-     */
     private function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $data): void
     {
-        $reflection = ReflectionCacheInstance::getInstance();
-
         foreach ($metadata->getRelations() as $property => $relation) {
             $related = $this->hydrateRelation($metadata, $property, $relation, $data);
 
             if ($related !== null) {
-                $reflection->setValue($entity, $property, $related);
+                $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $related);
+
             }
         }
     }

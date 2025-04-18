@@ -4,7 +4,7 @@ namespace ORM\Cache;
 
 use ORM\Metadata\MetadataEntity;
 
-interface MetadataCacheInterface
+interface MetadataCache
 {
     /**
      * Fetch a MetadataEntity from cache.

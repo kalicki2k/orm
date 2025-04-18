@@ -6,7 +6,7 @@ use ORM\Metadata\MetadataEntity;
 use Psr\SimpleCache\CacheInterface;
 
 // @todo This is an example and not yet implemented (Symfony, Laravel, Doctrine Cache)
-class Psr16MetadataCache implements MetadataCacheInterface
+class Psr16MetadataCache implements MetadataCache
 {
     public function __construct(private CacheInterface $cache, private int $ttl = 3600) {}
 

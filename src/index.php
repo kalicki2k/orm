@@ -3,6 +3,7 @@
 use Dotenv\Dotenv;
 use Entity\Profile;
 use Entity\User;
+use ORM\Cache\RedisMetadataCache;
 use ORM\Drivers\PDODriver;
 use ORM\Entity\EntityManager;
 use ORM\Logger\LoggerFactory;
@@ -15,83 +16,33 @@ require_once 'vendor/autoload.php';
 $dotenv = Dotenv::createImmutable(__DIR__);
 $dotenv->load();
 
-//stream_wrapper_register("orm", StreamWrapper::class);
-//
-//$handle = fopen("orm://Entity\\User?format=csv", "r");
-//$output = '';
-//
-//while (!feof($handle)) {
-//    $line = trim(fgets($handle));
-//    if (!empty($line)) {
-//        $output .= $line . "\n";
-//    }
-//}
-//fclose($handle);
-//
-//
-//echo "CSV Output:\n";
-//echo $output;
+// Setup Redis
+$redis = new Redis();
+$redis->connect('redis', 6379); // Container-Name aus docker-compose
+$cache = new RedisMetadataCache($redis);
 
-$entityManager = new EntityManager(PDODriver::default(), new MetadataParser(), LoggerFactory::create());
+// Setup ORM
+$driver = PDODriver::default();
+$logger = LoggerFactory::create();
+$parser = new MetadataParser($cache);
+$em = new EntityManager($driver, $parser, $logger);
 
-//$results = $entityManager->findAll(User::class, ["profile"]);
-//var_dump($results);
+// CREATE
+$user = (new User())
+    ->setUsername("alice")
+    ->setEmail("alice@redis.dev");
+$em->persist($user)->flush();
+echo "✅  Created user ID: " . $user->getId() . PHP_EOL;
 
-$user = $entityManager->findBy(User::class, 2, ["profile"]);
-//var_dump($user);
-var_dump($user->getProfile()->getBio());
+// READ
+$found = $em->findBy(User::class, $user->getId());
+echo "👀 Read: " . $found->getUsername() . PHP_EOL;
 
-//foreach ($entityManager->streamAll(User::class) as $u) {
-//    echo "- {$u->getId()}: {$u->getUsername()}" . PHP_EOL;
-//}
+// UPDATE
+$found->setEmail("updated@redis.dev");
+$em->update($found)->flush();
+echo "✏️ Updated user ID: " . $found->getId() . PHP_EOL;
 
-//
-$profile = new Profile();
-$profile->setBio("...");
-
-$user = new User();
-$user->setUsername("foo")->setProfile($profile);
-$user->setUsername("foo")->setEmail("bar@example.com")->setProfile($profile);
-
-$entityManager->persist($user);
-$entityManager->flush();
-
-$entityManager->delete($user);
-$entityManager->flush();
-
-//$user1 = new User();
-//$user1->setUsername("alice")->setEmail("alice@example.com");
-//
-//$user2 = new User();
-//$user2->setUsername("bob")->setEmail("bob@example.com");
-
-//$entityManager->persist($user1);
-//$entityManager->persist($user2);
-//$entityManager->persist([$user1, $user2]);
-//$entityManager->flush();
-//var_dump($user1);
-//var_dump($user2);
-
-//$entityManager->delete($user2);
-//$entityManager->flush();
-
-//$foundAlice = $entityManager->find(User::class, ["email" => "alice@example.com"]);
-//$foundBob = $entityManager->find(User::class, ["email" => "bob@example.com"]);
-//
-//var_dump($foundAlice); // sollte User enthalten
-//var_dump($foundBob);   // sollte NULL sein
-
-//$user = $entityManager->find(User::class, ["id" => 1]);
-
-//var_dump($user);
-
-
-//$newUser = new User();
-//$newUser->setUsername("kalle")->setEmail("kalle@kalle.com");
-//
-//$entityManager->persist($newUser);
-
-//$user->setUsername("kalleUpdated")->setEmail("kalleUpdated@kalle.com");
-//
-//$entityManager->update($user);
-//$entityManager->delete($user);
+// DELETE
+$em->delete($found)->flush();
+echo "❌  Deleted user ID: " . $found->getId() . PHP_EOL;

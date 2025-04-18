@@ -145,7 +145,7 @@ class QueryBuilder
             }
         }
 
-        $this->queryContext->parameters = $parameters;
+        $this->queryContext->parameters = array_merge($this->queryContext->parameters, $parameters);
         return $this;
     }
 
@@ -282,6 +282,8 @@ class QueryBuilder
     public function values(array $data): self
     {
         $this->queryContext->values = $data;
+        $this->queryContext->parameters = array_merge($this->queryContext->parameters, $data);
+
         return $this;
     }
 

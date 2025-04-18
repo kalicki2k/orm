@@ -5,6 +5,8 @@ namespace ORM\Metadata;
 use InvalidArgumentException;
 use ORM\Attributes\Entity;
 use ORM\Attributes\Table;
+use ORM\Cache\InMemoryMetadataCache;
+use ORM\Cache\MetadataCacheInterface;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\AttributeHandler\ColumnAttributeHandler;
 use ORM\Metadata\AttributeHandler\IdAttributeHandler;
@@ -17,7 +19,9 @@ class MetadataParser
 {
     /** @var MetadataAttributeHandler[] */
     private array $handlers;
-    public function __construct()
+    public function __construct(
+        private MetadataCacheInterface $cache = new InMemoryMetadataCache()
+    )
     {
         $this->handlers = [
             new IdAttributeHandler(),
@@ -26,10 +30,18 @@ class MetadataParser
         ];
     }
 
+    public function withCache(MetadataCacheInterface $cache): self
+    {
+        $this->cache = $cache;
+        return $this;
+    }
+
     /**
+     * Converts an entity object into an associative array of column => value.
+     *
      * @throws ReflectionException
      */
-    public function extract(EntityBase $entity, bool $excludePrimaryKey = false) : array
+    public function extract(EntityBase $entity, bool $excludePrimaryKey = false): array
     {
         $metadata = $this->parse($entity::class);
         $reflection = ReflectionCacheInstance::getInstance();
@@ -51,16 +63,22 @@ class MetadataParser
     }
 
     /**
+     * Parses metadata for an entity class – with caching.
+     *
      * @throws ReflectionException
      */
     public function parse(string $entityName): MetadataEntity
     {
+        if ($cached = $this->cache->get($entityName)) {
+            return $cached;
+        }
+
         $reflection = ReflectionCacheInstance::getInstance()->get($entityName);
         $entityAttributes = $reflection->getAttributes(Entity::class);
         $tableAttributes = $reflection->getAttributes(Table::class);
 
         if (empty($entityAttributes) || empty($tableAttributes)) {
-            throw new InvalidArgumentException("The class {$entityName} is not marked as an entity.");
+            throw new InvalidArgumentException("The class $entityName is not marked as an entity.");
         }
 
         $metadataEntity = new MetadataEntity($entityName);
@@ -76,6 +94,7 @@ class MetadataParser
             }
         }
 
+        $this->cache->set($entityName, $metadataEntity);
         return $metadataEntity;
     }
 }

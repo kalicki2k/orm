@@ -2,6 +2,7 @@
 
 namespace ORM\Persistence;
 
+use ORM\Cache\EntityCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
@@ -12,8 +13,9 @@ use ReflectionException;
 final readonly class InsertExecutor
 {
     public function __construct(
-        private DatabaseDriver   $databaseDriver,
-        private MetadataParser   $metadataParser,
+        private DatabaseDriver $databaseDriver,
+        private MetadataParser $metadataParser,
+        private EntityCache $entityCache,
         private ?LoggerInterface $logger = null,
     ) {}
 
@@ -38,5 +40,13 @@ final readonly class InsertExecutor
         }
 
         $entity->__markPersisted($this->metadataParser->extract($entity));
+
+        $id = $this->metadataParser
+            ->getReflectionCache()
+            ->getValue($entity, $metadata->getPrimaryKey());
+
+        if (is_scalar($id)) {
+            $this->entityCache->set($entity::class, $id, $entity);
+        }
     }
 }

@@ -6,6 +6,8 @@ use DateMalformedStringException;
 use DateTimeImmutable;
 use Generator;
 use InvalidArgumentException;
+use ORM\Cache\EntityCache;
+use ORM\Cache\InMemoryEntityCache;
 use ORM\Cache\ReflectionCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Metadata\MetadataEntity;
@@ -43,9 +45,10 @@ class EntityManager {
         private readonly DatabaseDriver $databaseDriver,
         private readonly MetadataParser $metadataParser,
         private readonly ?LoggerInterface $logger = null,
+        private readonly EntityCache $entityCache = new InMemoryEntityCache(),
     ) {
-        $this->reflectionCache = $metadataParser->getReflectionCache(); // ✨
-        $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->logger);
+        $this->reflectionCache = $metadataParser->getReflectionCache();
+        $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->entityCache, $this->logger);
         $this->relationHydrators = [
             new LazyOneToOneHydrator($this),
             new EagerOneToOneHydrator($this),
@@ -129,6 +132,16 @@ class EntityManager {
 
         $results = [];
         while ($row = $statement->fetch()) {
+            $id = $row[$metadata->getAlias() . "_" . $metadata->getPrimaryKey()] ?? null;
+
+            if (is_scalar($id)) {
+                $cached = $this->entityCache->get($entityName, $id);
+                if ($cached !== null) {
+                    $results[] = $cached;
+                    continue;
+                }
+            }
+
             $results[] = $this->hydrateEntity($metadata, $row);
         }
 
@@ -148,6 +161,13 @@ class EntityManager {
      */
     public function findBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): ?object
     {
+        if (is_scalar($criteria)) {
+            $cached = $this->entityCache->get($entityName, $criteria);
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
         $metadata = $this->getMetadata($entityName);
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
@@ -183,6 +203,16 @@ class EntityManager {
             ->execute();
 
         while ($row = $statement->fetch()) {
+            $id = $row[$metadata->getAlias() . "_" . $metadata->getPrimaryKey()] ?? null;
+
+            if (is_scalar($id)) {
+                $cached = $this->entityCache->get($entityName, $id);
+                if ($cached !== null) {
+                    yield $cached;
+                    continue;
+                }
+            }
+
             yield $this->hydrateEntity($metadata, $row);
         }
     }
@@ -206,6 +236,16 @@ class EntityManager {
             ->execute();
 
         while ($row = $statement->fetch()) {
+            $id = $row[$metadata->getAlias() . "_" . $metadata->getPrimaryKey()] ?? null;
+
+            if (is_scalar($id)) {
+                $cached = $this->entityCache->get($entityName, $id);
+                if ($cached !== null) {
+                    yield $cached;
+                    continue;
+                }
+            }
+
             yield $this->hydrateEntity($metadata, $row);
         }
     }
@@ -290,6 +330,11 @@ class EntityManager {
         $this->hydrateRelations($entity, $metadata, $data);
 
         $entity->__takeSnapshot($this->metadataParser->extract($entity));
+
+        $id = $this->reflectionCache->getValue($entity, $metadata->getPrimaryKey());
+        if (is_scalar($id)) {
+            $this->entityCache->set($metadata->getEntityName(), $id, $entity);
+        }
 
         return $entity;
     }

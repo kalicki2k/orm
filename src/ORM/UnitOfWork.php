@@ -12,7 +12,7 @@ use ORM\Persistence\InsertExecutor;
 use ORM\Persistence\UpdateExecutor;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
-use WeakMap;
+use SplObjectStorage;
 
 class UnitOfWork
 {
@@ -20,9 +20,9 @@ class UnitOfWork
     private UpdateExecutor $updateExecutor;
     private DeleteExecutor $deleteExecutor;
     private CascadeHandler $cascadeHandler;
-    private WeakMap $scheduledForInsert;
-    private WeakMap $scheduledForUpdate;
-    private WeakMap $scheduledForDelete;
+    private SplObjectStorage $scheduledForInsert;
+    private SplObjectStorage $scheduledForUpdate;
+    private SplObjectStorage $scheduledForDelete;
 
     public function __construct(
         readonly DatabaseDriver $databaseDriver,
@@ -33,9 +33,9 @@ class UnitOfWork
         $this->updateExecutor = new UpdateExecutor($databaseDriver, $metadataParser, $logger);
         $this->deleteExecutor = new DeleteExecutor($databaseDriver, $metadataParser, $logger);
         $this->cascadeHandler = new CascadeHandler($metadataParser, $this);
-        $this->scheduledForInsert = new WeakMap();
-        $this->scheduledForUpdate = new WeakMap();
-        $this->scheduledForDelete = new WeakMap();
+        $this->scheduledForInsert = new SplObjectStorage();
+        $this->scheduledForUpdate = new SplObjectStorage();
+        $this->scheduledForDelete = new SplObjectStorage();
     }
 
     /**
@@ -43,7 +43,7 @@ class UnitOfWork
      */
     public function scheduleForInsert(EntityBase $entity): void
     {
-        if (isset($this->scheduledForInsert[$entity])) {
+        if ($this->scheduledForInsert->contains($entity)) {
             return;
         }
 
@@ -62,7 +62,7 @@ class UnitOfWork
             }
         }
 
-        $this->scheduledForInsert[$entity] = true;
+        $this->scheduledForInsert->attach($entity);
         $this->handleCascades($entity, CascadeType::Persist);
     }
 
@@ -71,7 +71,7 @@ class UnitOfWork
      */
     public function scheduleForUpdate(EntityBase $entity): void
     {
-        if (isset($this->scheduledForUpdate[$entity])) {
+        if ($this->scheduledForUpdate->contains($entity)) {
             return;
         }
 
@@ -79,7 +79,7 @@ class UnitOfWork
             return;
         }
 
-        $this->scheduledForUpdate[$entity] = true;
+        $this->scheduledForUpdate->attach($entity);
     }
 
     /**
@@ -87,7 +87,7 @@ class UnitOfWork
      */
     public function scheduleForDelete(EntityBase $entity): void
     {
-        if (isset($this->scheduledForDelete[$entity])) {
+        if ($this->scheduledForDelete->contains($entity)) {
             return;
         }
 
@@ -95,7 +95,7 @@ class UnitOfWork
             return;
         }
 
-        $this->scheduledForDelete[$entity] = true;
+        $this->scheduledForDelete->attach($entity);
         $this->handleCascades($entity, CascadeType::Remove);
     }
 
@@ -104,15 +104,15 @@ class UnitOfWork
      */
     public function commit(): void
     {
-        foreach ($this->scheduledForDelete as $entity => $_) {
+        foreach ($this->scheduledForDelete as $entity) {
             $this->executeDelete($entity);
         }
 
-        foreach ($this->scheduledForInsert as $entity => $_) {
+        foreach ($this->scheduledForInsert as $entity) {
             $this->executeInsert($entity);
         }
 
-        foreach ($this->scheduledForUpdate as $entity => $_) {
+        foreach ($this->scheduledForUpdate as $entity) {
             $this->executeUpdate($entity);
         }
 
@@ -121,9 +121,9 @@ class UnitOfWork
 
     private function clear(): void
     {
-        $this->scheduledForInsert = new WeakMap();
-        $this->scheduledForUpdate = new WeakMap();
-        $this->scheduledForDelete = new WeakMap();
+        $this->scheduledForInsert = new SplObjectStorage();
+        $this->scheduledForUpdate = new SplObjectStorage();
+        $this->scheduledForDelete = new SplObjectStorage();
     }
 
     /**

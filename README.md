@@ -20,6 +20,7 @@ Powered by native attributes, a modular architecture, and zero magic.
 ✅ PSR-3 Logging (Monolog or custom)  
 ✅ Reflection caching via swappable `ReflectionCache`  
 ✅ Metadata caching via pluggable interface (PSR-16 compatible)  
+✅ Entity identity caching via pluggable `EntityCache`
 
 ---
 
@@ -189,6 +190,7 @@ unlink("orm://Entity\\User?id=1");
 | `StreamWrapper`       | enables PHP stream API for ORM                   |
 | `ReflectionCache`     | pluggable strategy for caching reflection        |
 | `MetadataCache`       | pluggable cache layer for parsed metadata        |
+| `EntityCache`         | identity map for caching hydrated entities       |
 | `Expression`          | powerful WHERE clause construction               |
 
 ---
@@ -210,6 +212,7 @@ unlink("orm://Entity\\User?id=1");
 - [x] SQL Renderer Strategy  
 - [x] Redis + PSR-16 metadata cache support  
 - [x] ReflectionCache abstraction  
+- [x] Entity identity cache via `EntityCache`  
 - [x] ExpressionBuilder (v1)  
 - [ ] OneToMany / ManyToOne / ManyToMany  
 - [ ] CLI tooling (generate entities, run migrations)  

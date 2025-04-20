@@ -8,6 +8,12 @@ use ReflectionNamedType;
 use ReflectionProperty;
 use ReflectionException;
 
+/**
+ * Default implementation of ReflectionCache using in-memory storage.
+ *
+ * Caches ReflectionClass and ReflectionProperty objects to avoid repeated reflection.
+ * This improves performance during hydration, change-tracking and runtime analysis.
+ */
 class InMemoryReflectionCache implements ReflectionCache
 {
     private array $classCache = [];
@@ -65,6 +71,20 @@ class InMemoryReflectionCache implements ReflectionCache
     public function isInitialized(EntityBase $class, string $property): bool
     {
         return $this->getProperty($class, $property)->isInitialized($class);
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function hasProperty(EntityBase $class, string $property): bool
+    {
+        $className = $class::class;
+
+        if (!isset($this->classCache[$className])) {
+            $this->classCache[$className] = new ReflectionClass($className);
+        }
+
+        return $this->classCache[$className]->hasProperty($property);
     }
 
     public function clear(string $class): void

@@ -1,6 +1,6 @@
 <?php
 
-namespace ORM\Relation;
+namespace ORM\Hydration;
 
 use DateMalformedStringException;
 use ORM\Entity\EntityBase;

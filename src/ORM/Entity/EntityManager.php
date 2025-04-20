@@ -2,21 +2,18 @@
 
 namespace ORM\Entity;
 
-use DateMalformedStringException;
-use DateTimeImmutable;
 use Generator;
 use InvalidArgumentException;
 use ORM\Cache\EntityCache;
 use ORM\Cache\InMemoryEntityCache;
 use ORM\Cache\ReflectionCache;
 use ORM\Drivers\DatabaseDriver;
+use ORM\Hydration\EntityHydrator;
+use ORM\Hydration\Hydrator;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
 use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
-use ORM\Relation\EagerOneToOneHydrator;
-use ORM\Relation\LazyOneToOneHydrator;
-use ORM\Relation\RelationHydrator;
 use ORM\UnitOfWork;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
@@ -27,12 +24,11 @@ use ReflectionException;
  * The EntityManager handles querying, persisting, and retrieving entity objects.
  */
 class EntityManager {
-    /** @var RelationHydrator[] */
-    private array $relationHydrators;
-
     private UnitOfWork $unitOfWork;
 
     private ReflectionCache $reflectionCache;
+
+    private Hydrator $hydrator;
 
     /**
      * EntityManager constructor.
@@ -49,10 +45,7 @@ class EntityManager {
     ) {
         $this->reflectionCache = $metadataParser->getReflectionCache();
         $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->entityCache, $this->logger);
-        $this->relationHydrators = [
-            new LazyOneToOneHydrator($this),
-            new EagerOneToOneHydrator($this),
-        ];
+        $this->hydrator = new EntityHydrator($this, $this->metadataParser, $this->reflectionCache, $this->entityCache);
     }
 
     /**
@@ -114,7 +107,6 @@ class EntityManager {
 
     /**
      * @throws ReflectionException
-     * @throws DateMalformedStringException
      */
     public function findAll(string $entityName, array $options = []): array
     {
@@ -156,7 +148,6 @@ class EntityManager {
      * @param array $options
      * @return object|null The entity object if found, or null if no match is found.
      *
-     * @throws DateMalformedStringException
      * @throws ReflectionException
      */
     public function findBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): ?object
@@ -186,7 +177,6 @@ class EntityManager {
 
     /**
      * @throws ReflectionException
-     * @throws DateMalformedStringException
      */
     public function streamAll(string $entityName, array $options = []): Generator
     {
@@ -219,7 +209,6 @@ class EntityManager {
 
     /**
      * @throws ReflectionException
-     * @throws DateMalformedStringException
      */
     public function streamBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): Generator
     {
@@ -315,94 +304,8 @@ class EntityManager {
         return [$metadata->getPrimaryKey() => $criteria];
     }
 
-    /**
-     * @throws ReflectionException
-     * @throws DateMalformedStringException
-     */
     public function hydrateEntity(MetadataEntity $metadata, array $data): EntityBase
     {
-        $entity = $this
-            ->reflectionCache
-            ->getClass($metadata->getEntityName())
-            ->newInstanceWithoutConstructor();
-
-        $this->hydrateColumns($entity, $metadata, $data);
-        $this->hydrateRelations($entity, $metadata, $data);
-
-        $entity->__takeSnapshot($this->metadataParser->extract($entity));
-
-        $id = $this->reflectionCache->getValue($entity, $metadata->getPrimaryKey());
-        if (is_scalar($id)) {
-            $this->entityCache->set($metadata->getEntityName(), $id, $entity);
-        }
-
-        return $entity;
-    }
-
-
-    /**
-     * @throws DateMalformedStringException
-     */
-    private function hydrateColumns(EntityBase $entity, MetadataEntity $metadata, array $data): void
-    {
-        foreach ($metadata->getColumns() as $property => $column) {
-            $name = "{$metadata->getAlias()}_{$column["name"]}";
-
-            if (!array_key_exists($name, $data)) {
-                continue;
-            }
-
-            $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
-            $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $value);
-
-        }
-    }
-
-    /**
-     * @throws DateMalformedStringException
-     */
-    private function hydrateColumn(mixed $value, ?string $type = null): mixed
-    {
-        if (!isset($type)) {
-            return $value;
-        }
-
-        return match (strtolower($type)) {
-            "int", "integer" => (int) $value,
-            "float", "double" => (float) $value,
-            "bool", "boolean" => (bool) $value,
-            "datetime" => new DateTimeImmutable($value),
-            "json" => json_decode($value, true),
-            default => $value,
-        };
-    }
-
-    private function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $data): void
-    {
-        foreach ($metadata->getRelations() as $property => $relation) {
-            $related = $this->hydrateRelation($metadata, $property, $relation, $data);
-
-            if ($related !== null) {
-                $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $related);
-
-            }
-        }
-    }
-
-
-    private function hydrateRelation(
-        MetadataEntity $parentMetadata,
-        string $property,
-        array $relation,
-        array $data
-    ): ?object
-    {
-        foreach ($this->relationHydrators as $hydrator) {
-            if ($hydrator->supports($relation)) {
-                return $hydrator->hydrate($parentMetadata, $property, $relation, $data);
-            }
-        }
-
-        return null;
+        return $this->hydrator->hydrate($metadata, $data);
     }
 }

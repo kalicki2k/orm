@@ -8,18 +8,21 @@ Powered by native attributes, a modular architecture, and zero magic.
 
 ## ✨ Features
 
-✅ PHP 8.4 attributes for entity mapping  
+✅ PHP 8.4 attributes for entity & relation mapping  
 ✅ Clean architecture with responsibility-separated components  
 ✅ Modular QueryBuilder with pluggable builders & SQL renderers  
 ✅ `ExpressionBuilder` for powerful WHERE conditions  
-✅ Support for insert, update, delete, find, streamAll, streamBy, countBy  
-✅ Lazy & Eager loading with FetchType enum  
-✅ OneToOne support incl. JoinColumn handling  
-✅ UnitOfWork with cascade persistence/removal  
-✅ StreamWrapper for CRUD via PHP streams (`fopen('orm://...')`)  
-✅ PSR-3 Logging (Monolog or custom)  
-✅ Reflection caching via swappable `ReflectionCache`  
-✅ Metadata caching via pluggable interface (PSR-16 compatible)  
+✅ Support for `insert`, `update`, `delete`, `find`, `streamAll`, `streamBy`, `countBy`  
+✅ Default Lazy loading with `FetchType::Lazy`  
+✅ Optional Eager loading via `FetchType::Eager` and `joins => [...]`  
+✅ OneToOne support with `JoinColumn` mapping and Closure-based lazy hydration  
+✅ Cascade persistence & removal via `CascadeType` in UnitOfWork  
+✅ Alias-based hydration with safe reflection and type conversion  
+✅ StreamWrapper for CRUD via native PHP streams (`fopen('orm://...')`)  
+✅ PSR-3 logging integration (e.g. Monolog or custom logger)  
+✅ Reflection caching via swappable `ReflectionCache` interface  
+✅ Metadata caching via pluggable PSR-16 compatible cache (e.g. Redis, Filesystem)  
+✅ Entity identity caching with injectable `EntityCache` implementation
 
 ---
 
@@ -60,6 +63,7 @@ To enable Redis cache:
 ```php
 use ORM\Cache\RedisMetadataCache;
 
+// Use Redis for metadata caching
 $entityManager = new EntityManager(
     PDODriver::fromEnv(),
     new MetadataParser(new RedisMetadataCache()),
@@ -68,9 +72,12 @@ $entityManager = new EntityManager(
 ```
 
 Or switch at runtime:
-
 ```php
-$parser = (new MetadataParser())->withCache(new RedisMetadataCache());
+use ORM\Metadata\MetadataParser;
+use ORM\Cache\RedisMetadataCache;
+
+// Add Redis dynamically to an existing parser
+$parser = (new MetadataParser())->with(new RedisMetadataCache());
 ```
 
 ---
@@ -80,37 +87,65 @@ $parser = (new MetadataParser())->withCache(new RedisMetadataCache());
 ```php
 #[Entity]
 #[Table("users")]
-class User extends EntityBase {
+class User extends EntityBase
+{
     #[Id]
     #[GeneratedValue]
     #[Column(type: "int")]
     private int $id;
 
-    #[Column(type: "string")]
+    #[Column(type: "string", length: 255)]
     private string $username;
 
     #[Column(type: "string", default: "test@example.com")]
     private string $email;
 
-    #[OneToOne(entity: Profile::class)]
+    #[OneToOne(
+        entity: Profile::class,
+        fetch: FetchType::Lazy,
+        cascade: [CascadeType::Persist, CascadeType::Remove]
+    )]
     #[JoinColumn(name: "profile_id", referencedColumn: "id")]
     private Profile|Closure $profile;
 
-    public function getProfile(): Profile {
+    public function getProfile(): Profile
+    {
         if ($this->profile instanceof Closure) {
             $this->profile = ($this->profile)();
         }
         return $this->profile;
     }
 
-    public function jsonSerialize(): mixed {
+    public function jsonSerialize(): mixed
+    {
         return [
             'id' => $this->id,
+            'username' => $this->username,
             'email' => $this->email,
+            'profile' => $this->getProfile()
         ];
     }
 }
 ```
+
+## 🔄 Join Example
+
+To eagerly fetch a relation (e.g., `profile`), pass `joins` into `findBy`:
+
+```php
+$user = $entityManager->findBy(User::class, 1, [
+    'joins' => ['profile']
+]);
+```
+
+## ✅ Fetch Behavior
+
+- Lazy is default for all relations
+- Eager loading requires:
+    - `fetch: FetchType::Eager` in entity
+    - AND explicit `joins => [...]` in query
+- Lazy hydration via Closure
+- Eager hydration via JOIN + aliased columns
 
 ---
 
@@ -189,6 +224,9 @@ unlink("orm://Entity\\User?id=1");
 | `StreamWrapper`       | enables PHP stream API for ORM                   |
 | `ReflectionCache`     | pluggable strategy for caching reflection        |
 | `MetadataCache`       | pluggable cache layer for parsed metadata        |
+| `EntityCache`         | identity map for caching hydrated entities       |
+| `RelationHydrator`    | plugs in lazy / eager loading strategies         |
+| `FetchType`           | controls default vs. explicit JOIN behavior      |
 | `Expression`          | powerful WHERE clause construction               |
 
 ---
@@ -204,13 +242,17 @@ unlink("orm://Entity\\User?id=1");
 
 ## 🧠 What's next?
 
-- [x] Lazy & Eager loading  
-- [x] JoinColumn + mappedBy logic  
-- [x] Modular QueryBuilder  
+- [x] Lazy & Eager loading (FetchType + Closure hydration)  
+- [x] JoinColumn + mappedBy logic (owning & inverse side handled)  
+- [x] Modular QueryBuilder (select, join, where, options)  
 - [x] SQL Renderer Strategy  
 - [x] Redis + PSR-16 metadata cache support  
 - [x] ReflectionCache abstraction  
+- [x] Entity identity cache via `EntityCache`  
 - [x] ExpressionBuilder (v1)  
+- [x] Alias-based column hydration  
+- [x] JOINs only on demand via `joins => [...]`  
+- [x] Safe fallback for uninitialized virtual props 
 - [ ] OneToMany / ManyToOne / ManyToMany  
 - [ ] CLI tooling (generate entities, run migrations)  
 - [ ] Schema sync / migration diffing  

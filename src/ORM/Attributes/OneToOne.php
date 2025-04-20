@@ -8,28 +8,41 @@ use ORM\Entity\Type\FetchType;
 /**
  * Defines a one-to-one relationship between two entities.
  *
- * This attribute is used to map a property as a one-to-one association with another entity.
- * Can be configured to specify the owning or inverse side of the relationship.
+ * This attribute is used to mark a property as a one-to-one association.
+ * Supports cascade behavior, fetch type, and bidirectional mapping.
  *
- * Example:
- *   #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
- *   #[JoinColumn(name: "profile_id", referencedColumn: "id")]
- *   public Profile $profile;
+ * - `entity` defines the related class.
+ * - `mappedBy` is used on the inverse side of a bidirectional relation.
+ * - `cascade` allows propagation of operations like persist or remove.
+ * - `fetch` defines if the relation should be loaded lazily (default) or eagerly.
  *
- * @see \ORM\Attributes\JoinColumn
- * @see \ORM\\MetadataParser
+ * @example
+ * ```php
+ * #[OneToOne(
+ *     entity: Profile::class,
+ *     cascade: [CascadeType::Persist, CascadeType::Remove],
+ *     fetch: FetchType::Lazy
+ * )]
+ * #[JoinColumn(name: "profile_id", referencedColumn: "id")]
+ * private Profile|Closure $profile;
+ * ```
+ *
+ * @see JoinColumn
+ * @see \ORM\MetadataParser
  */
 #[Attribute(Attribute::TARGET_PROPERTY)]
 class OneToOne
 {
     /**
-     * @param string $entity The target entity class name.
-     * @param string|null $mappedBy The property name in the target entity that owns the relationship (inverse side).
+     * @param string $entity The fully qualified class name of the related entity.
+     * @param string|null $mappedBy The property name in the related entity that maps this side (inverse side).
+     * @param array|null $cascade List of CascadeType enums (e.g. Persist, Remove).
+     * @param FetchType $fetch Whether to eagerly or lazily load the relation (default = Lazy).
      */
     public function __construct(
         public string $entity,
         public ?string $mappedBy = null,
         public ?array $cascade = null,
-        public FetchType $fetch = FetchType::Eager,
+        public FetchType $fetch = FetchType::Lazy,
     ) {}
 }

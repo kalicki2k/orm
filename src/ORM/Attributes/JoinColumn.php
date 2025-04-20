@@ -4,19 +4,30 @@ namespace ORM\Attributes;
 
 use Attribute;
 
-
 /**
  * Specifies the details of a foreign key column in an entity relationship.
  *
- * Used in combination with relationship attributes like #[OneToOne] to define how the
- * foreign key is mapped in the database.
+ * This attribute is used to define how the owning side of a relation maps its foreign key
+ * to the referenced column in the target entity.
  *
- * Example:
- *   #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove])]
- *   #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: true)]
- *   public Profile $profile;
+ * Often used in combination with relationship attributes such as #[OneToOne] or #[ManyToOne].
  *
- * @see \ORM\Attributes\OneToOne
+ * - `name` is the name of the foreign key column in the current table.
+ * - `referencedColumn` is the column name in the target entity (usually its primary key).
+ * - `nullable` defines whether the FK column can be null (default: true).
+ * - `unique` defines whether the FK column must be unique (for one-to-one mappings).
+ *
+ * @example
+ * ```php
+ * #[OneToOne(
+ *     entity: Profile::class,
+ *     cascade: [CascadeType::Persist, CascadeType::Remove]
+ * )]
+ * #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: true)]
+ * private Profile|Closure $profile;
+ * ```
+ *
+ * @see OneToOne
  * @see \ORM\MetadataParser
  */
 #[Attribute(Attribute::TARGET_PROPERTY)]

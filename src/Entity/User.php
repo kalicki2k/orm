@@ -29,7 +29,7 @@ class User extends EntityBase
     #[Column(type: "string", length: 255, nullable: false, default: "default_email@example.com")]
     private string $email;
 
-    #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove], fetch: FetchType::Lazy)]
+    #[OneToOne(entity: Profile::class,  cascade: [CascadeType::Persist, CascadeType::Remove], fetch: FetchType::Eager)]
     #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
     private Profile|Closure $profile;
 

@@ -2,11 +2,35 @@
 
 namespace ORM\Query\Builder;
 
-use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 
+/**
+ * Builds the SELECT clause of an ORM-based SQL query.
+ *
+ * This class extracts column definitions from entity metadata and constructs
+ * the SELECT mappings using table and column aliases. It also delegates
+ * JOIN-building and WHERE clause building to their respective builders.
+ *
+ * @example
+ * ```php
+ * $queryBuilder = new QueryBuilder(...);
+ * $selectBuilder = new SelectBuilder();
+ *
+ * $selectBuilder->apply(
+ *     $queryBuilder,
+ *     $metadata,
+ *     $resolveMetadata,
+ *     ['id' => 1],
+ *     ['joins' => ['profile']]
+ * );
+ * ```
+ *
+ * @see JoinBuilder
+ * @see WhereBuilder
+ * @see MetadataEntity
+ */
 final readonly class SelectBuilder
 {
     public function __construct(
@@ -14,6 +38,15 @@ final readonly class SelectBuilder
         private WhereBuilder $whereBuilder = new WhereBuilder()
     ) {}
 
+    /**
+     * Applies SELECT logic to the given QueryBuilder.
+     *
+     * @param QueryBuilder $queryBuilder The query being built.
+     * @param MetadataEntity $metadata The metadata of the root entity.
+     * @param callable|null $resolveMetadata Optional resolver for related entity metadata.
+     * @param Expression|array|null $criteria WHERE conditions (as Expression or array).
+     * @param array $options Optional modifiers: joins[], limit, offset, orderBy, groupBy, distinct
+     */
     public function apply(
         QueryBuilder $queryBuilder,
         MetadataEntity $metadata,
@@ -26,22 +59,11 @@ final readonly class SelectBuilder
             $select["{$metadata->getAlias()}.{$column["name"]}"] = "{$metadata->getColumnAlias($column["name"])}";
         }
 
-        // Lazy foreign keys
-        foreach ($metadata->getRelations() as $relationData) {
-            $relation = $relationData["relation"] ?? null;
-            $joinColumn = $relationData["joinColumn"] ?? null;
-
-            if ($relation && $relation->fetch === FetchType::Lazy && $joinColumn !== null) {
-                $alias = "{$metadata->getAlias()}_$joinColumn->name";
-                $select["{$metadata->getAlias()}.$joinColumn->name"] ??= $alias;
-            }
-        }
-
         $queryBuilder->select($select);
 
         if ($resolveMetadata) {
-            $eagerRelations = $options["relations"] ?? [];
-            $this->joinBuilder->apply($queryBuilder, $metadata, $eagerRelations, $resolveMetadata);
+            $joins = $options["joins"] ?? [];
+            $this->joinBuilder->apply($queryBuilder, $metadata, $joins, $resolveMetadata);
         }
 
         [$where, $parameters] = $this->whereBuilder->build($metadata, $queryBuilder->getContext(), $criteria);
@@ -49,6 +71,12 @@ final readonly class SelectBuilder
         $this->applyOptions($queryBuilder, $options);
     }
 
+    /**
+     * Applies optional query modifiers like limit, offset, order, groupBy.
+     *
+     * @param QueryBuilder $queryBuilder
+     * @param array $options
+     */
     private function applyOptions(QueryBuilder $queryBuilder, array $options): void
     {
         if (isset($options["limit"])) $queryBuilder->limit($options["limit"]);

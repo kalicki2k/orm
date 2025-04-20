@@ -3,17 +3,24 @@
 namespace ORM\Attributes;
 
 use Attribute;
-use InvalidArgumentException;
 
 /**
- * Defines a column mapping for a class property.
+ * Marks a property as a column in the database table.
  *
- * This attribute is used to map an entity property to a specific column in the database.
- * It allows configuration of the column's data type, name, length, nullability, and default value.
+ * This attribute is used to define the mapping between an entity's property and its corresponding
+ * column in the database. It supports various options like data type, length, nullability, and default value.
  *
- * Example:
- *   #[Column(type: "string", name: "username", length: 255, nullable: false)]
- *   public string $username;
+ * - `type`: The data type of the column (e.g., "string", "int", "datetime").
+ * - `name`: Optional. The column name in the table. If omitted, the property name is used.
+ * - `length`: Optional. Maximum length (mostly for strings).
+ * - `nullable`: Whether the column can contain NULL values (default: false).
+ * - `default`: Optional default value for the column.
+ *
+ * @example
+ * ```php
+ * #[Column(type: "string", name: "username", length: 255, nullable: false)]
+ * private string $username;
+ * ```
  *
  * @see \ORM\MetadataParser
  */
@@ -21,13 +28,11 @@ use InvalidArgumentException;
 class Column
 {
     /**
-     * Constructs a new Column attribute.
-     *
-     * @param string $type The data type of the column (e.g., "string", "int", "bool", "datetime").
-     * @param string|null $name Optional custom column name. Defaults to the property name.
-     * @param int|null $length Optional length for types like "string" (e.g., VARCHAR).
-     * @param bool $nullable Whether the column allows NULL values. Defaults to false.
-     * @param mixed $default An optional default value used when none is provided during insert.
+     * @param string $type The column's data type (e.g. "string", "int", etc.).
+     * @param string|null $name Optional name of the column in the table.
+     * @param int|null $length Optional length (e.g. for VARCHAR).
+     * @param bool $nullable Whether the column can be null (default: false).
+     * @param mixed|null $default Optional default value.
      */
     public function __construct(
         public string $type,

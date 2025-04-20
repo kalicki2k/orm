@@ -12,7 +12,9 @@ use ORM\Cache\ReflectionCache;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\AttributeHandler\ColumnAttributeHandler;
 use ORM\Metadata\AttributeHandler\IdAttributeHandler;
+use ORM\Metadata\AttributeHandler\ManyToOneAttributeHandler;
 use ORM\Metadata\AttributeHandler\MetadataAttributeHandler;
+use ORM\Metadata\AttributeHandler\OneToManyAttributeHandler;
 use ORM\Metadata\AttributeHandler\OneToOneAttributeHandler;
 use ReflectionException;
 
@@ -29,7 +31,8 @@ class MetadataParser
             new IdAttributeHandler(),
             new ColumnAttributeHandler(),
             new OneToOneAttributeHandler($this),
-//            new OneToManyAttributeHandler(),
+            new OneToManyAttributeHandler(),
+            new ManyToOneAttributeHandler($this),
         ];
     }
 

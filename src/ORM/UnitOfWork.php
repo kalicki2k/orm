@@ -110,8 +110,8 @@ class UnitOfWork
             $this->executeDelete($entity);
         }
 
-        foreach ($this->scheduledForInsert as $entity) {
-            $this->executeInsert($entity);
+        foreach ($this->sortInsertEntitiesByDependency() as $entity) {
+            $this->insertExecutor->execute($entity);
         }
 
         foreach ($this->scheduledForUpdate as $entity) {
@@ -158,5 +158,44 @@ class UnitOfWork
     private function handleCascades(EntityBase $entity, CascadeType $action): void
     {
         $this->cascadeHandler->handle($entity, $action);
+    }
+
+    private function sortInsertEntitiesByDependency(): array
+    {
+        $ordered = [];
+        $visited = [];
+
+        foreach ($this->scheduledForInsert as $entity) {
+            $this->visit($entity, $ordered, $visited);
+        }
+
+        return $ordered;
+    }
+
+    private function visit(EntityBase $entity, array &$ordered, array &$visited): void
+    {
+        $hash = spl_object_hash($entity);
+        if (isset($visited[$hash])) {
+            return;
+        }
+
+        $visited[$hash] = true;
+
+        $metadata = $this->metadataParser->parse($entity::class);
+        $reflection = $this->metadataParser->getReflectionCache();
+
+        foreach ($metadata->getRelations() as $property => $relationInfo) {
+            $related = $reflection->getValue($entity, $property);
+
+            if ($related instanceof \Closure) {
+                $related = $related();
+            }
+
+            if ($related instanceof EntityBase && $this->scheduledForInsert->contains($related)) {
+                $this->visit($related, $ordered, $visited);
+            }
+        }
+
+        $ordered[] = $entity;
     }
 }

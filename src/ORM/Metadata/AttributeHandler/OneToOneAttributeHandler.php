@@ -7,17 +7,21 @@ use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
+use ReflectionException;
 use ReflectionProperty;
 
-class OneToOneAttributeHandler implements MetadataAttributeHandler
+readonly class OneToOneAttributeHandler implements MetadataAttributeHandler
 {
-    public function __construct(private MetadataParser $metadataParser){}
+    public function __construct(private MetadataParser $parser){}
 
     public function supports(ReflectionProperty $property): bool
     {
         return !empty($property->getAttributes(OneToOne::class));
     }
 
+    /**
+     * @throws ReflectionException
+     */
     public function build(ReflectionProperty $property, MetadataEntity $metadataEntity): void
     {
         $oneToOne = $property->getAttributes(OneToOne::class)[0]->newInstance();
@@ -27,7 +31,7 @@ class OneToOneAttributeHandler implements MetadataAttributeHandler
             : null;
 
         if ($joinColumn !== null) {
-            $targetMetadata = $this->metadataParser->parse($oneToOne->entity);
+            $targetMetadata = $this->parser->parse($oneToOne->entity);
             $referencedColumn = $targetMetadata->getColumns()[$joinColumn->referencedColumn];
             $type = $referencedColumn["attributes"]->type ?? "int";
 

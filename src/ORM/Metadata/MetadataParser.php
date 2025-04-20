@@ -28,7 +28,8 @@ class MetadataParser
         $this->handlers = [
             new IdAttributeHandler(),
             new ColumnAttributeHandler(),
-            new OneToOneAttributeHandler(),
+            new OneToOneAttributeHandler($this),
+//            new OneToManyAttributeHandler(),
         ];
     }
 
@@ -62,7 +63,6 @@ class MetadataParser
     public function extract(EntityBase $entity, bool $excludePrimaryKey = false): array
     {
         $metadata = $this->parse($entity::class);
-
         $data = [];
 
         foreach ($metadata->getColumns() as $property => $column) {
@@ -73,7 +73,33 @@ class MetadataParser
                 continue;
             }
 
-            $data[$column['name']] = $this->reflectionCache->getProperty($entity, $property)->getValue($entity);
+            if ($this->reflectionCache->hasProperty($entity, $property)) {
+                $data[$column['name']] = $this->reflectionCache
+                    ->getProperty($entity, $property)
+                    ->getValue($entity);
+                continue;
+            }
+
+            foreach ($metadata->getRelations() as $relationProperty => $relationData) {
+                $joinColumn = $relationData['joinColumn'] ?? null;
+
+                if ($joinColumn && $joinColumn->name === $column['name']) {
+                    $related = $this->reflectionCache->getValue($entity, $relationProperty);
+
+                    if ($related instanceof \Closure) {
+                        $related = $related();
+                        $this->reflectionCache->setValue($entity, $relationProperty, $related);
+                    }
+
+                    if ($related instanceof EntityBase) {
+                        $relatedMetadata = $this->parse($related::class);
+                        $data[$joinColumn->name] = $this->reflectionCache
+                            ->getValue($related, $relatedMetadata->getPrimaryKey());
+                    }
+
+                    break;
+                }
+            }
         }
 
         return $data;

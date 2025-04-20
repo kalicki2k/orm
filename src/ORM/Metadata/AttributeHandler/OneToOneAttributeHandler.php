@@ -2,13 +2,16 @@
 
 namespace ORM\Metadata\AttributeHandler;
 
+use ORM\Attributes\Column;
 use ORM\Attributes\JoinColumn;
 use ORM\Attributes\OneToOne;
 use ORM\Metadata\MetadataEntity;
+use ORM\Metadata\MetadataParser;
 use ReflectionProperty;
 
 class OneToOneAttributeHandler implements MetadataAttributeHandler
 {
+    public function __construct(private MetadataParser $metadataParser){}
 
     public function supports(ReflectionProperty $property): bool
     {
@@ -22,6 +25,15 @@ class OneToOneAttributeHandler implements MetadataAttributeHandler
         $joinColumn = !empty($joinColumnAttributes)
             ? $joinColumnAttributes[0]->newInstance()
             : null;
+
+        if ($joinColumn !== null) {
+            $targetMetadata = $this->metadataParser->parse($oneToOne->entity);
+            $referencedColumn = $targetMetadata->getColumns()[$joinColumn->referencedColumn];
+            $type = $referencedColumn["attributes"]->type ?? "int";
+
+            $column = new Column($type, $joinColumn->name, null, $joinColumn->nullable);
+            $metadataEntity->addColumn($column);
+        }
 
         $metadataEntity->addRelation($property->getName(), $oneToOne, $joinColumn);
 

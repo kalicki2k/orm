@@ -6,7 +6,7 @@ use ORM\Attributes\OneToMany;
 use ORM\Metadata\MetadataEntity;
 use ReflectionProperty;
 
-class OneToManyAttributeHandler implements MetadataAttributeHandler
+final readonly class OneToManyAttributeHandler implements MetadataAttributeHandler
 {
 
     public function supports(ReflectionProperty $property): bool

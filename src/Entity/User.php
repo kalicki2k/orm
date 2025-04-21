@@ -35,8 +35,8 @@ class User extends EntityBase
     #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
     private Profile|Closure $profile;
 
-    #[OneToMany(entity: Post::class, mappedBy: "user", cascade: [CascadeType::Persist])]
-    private Collection $posts;
+    #[OneToMany(entity: Post::class, mappedBy: "user", cascade: [CascadeType::Persist], fetch: FetchType::Eager)]
+    private Collection|Closure $posts;
 
     public function __construct()
     {
@@ -93,6 +93,10 @@ class User extends EntityBase
 
     public function getPosts(): Collection
     {
+        if ($this->posts instanceof Closure) {
+            $this->posts = ($this->posts)();
+        }
+
         return $this->posts;
     }
 

@@ -10,7 +10,7 @@ use ORM\Metadata\MetadataParser;
 use ReflectionException;
 use ReflectionProperty;
 
-readonly class OneToOneAttributeHandler implements MetadataAttributeHandler
+final readonly class OneToOneAttributeHandler implements MetadataAttributeHandler
 {
     public function __construct(private MetadataParser $parser){}
 

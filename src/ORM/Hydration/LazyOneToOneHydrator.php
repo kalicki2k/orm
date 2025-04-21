@@ -8,7 +8,7 @@ use ORM\Entity\EntityManager;
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 
-readonly class LazyOneToOneHydrator implements RelationHydrator
+final readonly class LazyOneToOneHydrator implements RelationHydrator
 {
     public function __construct(private EntityManager $entityManager) {}
 

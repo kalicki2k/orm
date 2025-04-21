@@ -24,9 +24,8 @@ class Profile extends EntityBase
     #[Column(type: "text", name: "bio", nullable: true)]
     private ?string $bio = null;
 
-    #[OneToOne(entity: User::class, mappedBy: "profile")]
+    #[OneToOne(entity: User::class, mappedBy: "profile", fetch: FetchType::Eager)]
     private Closure|User|null $user = null;
-//    private Closure|User $user;
 
 
     public function getId(): int

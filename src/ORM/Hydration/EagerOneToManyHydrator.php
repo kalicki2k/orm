@@ -29,11 +29,11 @@ final readonly class EagerOneToManyHydrator implements RelationHydrator
 
         $relationData = array_filter(
             $data,
-            fn($key) => str_starts_with($key, "{$relationAlias}_"),
+            fn ($key) => str_starts_with($key, "{$relationAlias}_"),
             ARRAY_FILTER_USE_KEY
         );
 
-        $hasData = count(array_filter($relationData, fn($v) => $v !== null)) > 0;
+        $hasData = count(array_filter($relationData, fn ($v) => $v !== null)) > 0;
         if (!$hasData) {
             return null;
         }

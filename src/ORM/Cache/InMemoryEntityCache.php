@@ -18,6 +18,11 @@ final class InMemoryEntityCache implements EntityCache
         $this->identityMap[$class][$id] = $entity;
     }
 
+    public function has(string $class, int|string $id): bool
+    {
+        return isset($this->identityMap[$class][$id]);
+    }
+
     public function clear(string $class, int|string $id): void
     {
         unset($this->identityMap[$class][$id]);

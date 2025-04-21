@@ -8,8 +8,10 @@ use ORM\Attributes\Entity;
 use ORM\Attributes\GeneratedValue;
 use ORM\Attributes\Id;
 use ORM\Attributes\JoinColumn;
+use ORM\Attributes\OneToMany;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
+use ORM\Collection;
 use ORM\Entity\EntityBase;
 use ORM\Entity\Type\CascadeType;
 use ORM\Entity\Type\FetchType;
@@ -33,15 +35,17 @@ class User extends EntityBase
     #[JoinColumn(name: "profile_id", referencedColumn: "id", nullable: false)]
     private Profile|Closure $profile;
 
+    #[OneToMany(entity: Post::class, mappedBy: "user", cascade: [CascadeType::Persist])]
+    private Collection $posts;
+
+    public function __construct()
+    {
+        $this->posts = new Collection();
+    }
+
     public function getId(): int
     {
         return $this->id;
-    }
-
-    public function setId(int $id): self
-    {
-        $this->id = $id;
-        return $this;
     }
 
     public function getUsername(): string
@@ -80,13 +84,25 @@ class User extends EntityBase
         return $this;
     }
 
+    public function  addPost(Post $post): self
+    {
+        $post->setUser($this);
+        $this->posts->add($post);
+        return $this;
+    }
+
+    public function getPosts(): Collection
+    {
+        return $this->posts;
+    }
+
     public function jsonSerialize(): mixed
     {
         return [
             "id" => $this->getId(),
             "username" => $this->getUsername(),
             "email" => $this->getEmail(),
-//            "profile" => $this->getProfile(),
+            "profile" => $this->getProfile(),
         ];
     }
 }

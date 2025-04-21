@@ -70,6 +70,10 @@ class InMemoryReflectionCache implements ReflectionCache
      */
     public function isInitialized(EntityBase $class, string $property): bool
     {
+        if (!$this->hasProperty($class, $property)) {
+            return true;
+        }
+
         return $this->getProperty($class, $property)->isInitialized($class);
     }
 

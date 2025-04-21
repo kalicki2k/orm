@@ -33,18 +33,29 @@ final readonly class CascadeHandler
             $cascade = $relationInfo["relation"]->cascade ?? [];
             $relatedEntity = $reflection->getValue($entity, $property);
 
-            if (!($relatedEntity instanceof EntityBase)) {
+            if ($relatedEntity instanceof EntityBase) {
+                if (!in_array($action, $cascade, true)) {
+                    continue;
+                }
+
+                match ($action) {
+                    CascadeType::Persist => $this->unitOfWork->scheduleForInsert($relatedEntity),
+                    CascadeType::Remove => $this->unitOfWork->scheduleForDelete($relatedEntity),
+                };
+
                 continue;
             }
 
-            if (!in_array($action, $cascade, true)) {
-                continue;
+            if ($relatedEntity instanceof \Traversable) {
+                foreach ($relatedEntity as $item) {
+                    if ($item instanceof EntityBase && in_array($action, $cascade, true)) {
+                        match ($action) {
+                            CascadeType::Persist => $this->unitOfWork->scheduleForInsert($item),
+                            CascadeType::Remove => $this->unitOfWork->scheduleForDelete($item),
+                        };
+                    }
+                }
             }
-
-            match ($action) {
-                CascadeType::Persist => $this->unitOfWork->scheduleForInsert($relatedEntity),
-                CascadeType::Remove => $this->unitOfWork->scheduleForDelete($relatedEntity),
-            };
         }
     }
 }

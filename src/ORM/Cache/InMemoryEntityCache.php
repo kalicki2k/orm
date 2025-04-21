@@ -6,30 +6,33 @@ use ORM\Entity\EntityBase;
 
 final class InMemoryEntityCache implements EntityCache
 {
-    private array $identityMap = [];
+    /**
+     * @var array<string, array<int|string, EntityBase>>
+     */
+    private array $entities = [];
+
+    public function has(string $class, int|string $id): bool
+    {
+        return isset($this->entities[$class][$id]);
+    }
 
     public function get(string $class, int|string $id): ?EntityBase
     {
-        return $this->identityMap[$class][$id] ?? null;
+        return $this->entities[$class][$id] ?? null;
     }
 
     public function set(string $class, int|string $id, EntityBase $entity): void
     {
-        $this->identityMap[$class][$id] = $entity;
-    }
-
-    public function has(string $class, int|string $id): bool
-    {
-        return isset($this->identityMap[$class][$id]);
+        $this->entities[$class][$id] = $entity;
     }
 
     public function clear(string $class, int|string $id): void
     {
-        unset($this->identityMap[$class][$id]);
+        unset($this->entities[$class][$id]);
     }
 
     public function clearAll(): void
     {
-        $this->identityMap = [];
+        $this->entities = [];
     }
 }

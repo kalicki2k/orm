@@ -87,6 +87,13 @@ class MetadataParser
                 $joinColumn = $relationData['joinColumn'] ?? null;
 
                 if ($joinColumn && $joinColumn->name === $column['name']) {
+                    if (
+                        !$this->reflectionCache->hasProperty($entity, $relationProperty) ||
+                        !$this->reflectionCache->isInitialized($entity, $relationProperty)
+                    ) {
+                        continue;
+                    }
+
                     $related = $this->reflectionCache->getValue($entity, $relationProperty);
 
                     if ($related instanceof \Closure) {

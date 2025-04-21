@@ -4,8 +4,10 @@ namespace ORM\Hydration;
 
 use DateMalformedStringException;
 use DateTimeImmutable;
+use ORM\Attributes\OneToMany;
 use ORM\Cache\EntityCache;
 use ORM\Cache\ReflectionCache;
+use ORM\Collection;
 use ORM\Entity\EntityBase;
 use ORM\Entity\EntityManager;
 use ORM\Metadata\MetadataEntity;
@@ -44,6 +46,7 @@ class EntityHydrator implements Hydrator
         $this->relationHydrators = [
             new LazyOneToOneHydrator($this->entityManager),
             new EagerOneToOneHydrator($this->entityManager),
+            new EagerOneToManyHydrator($this->entityManager),
         ];
     }
 
@@ -57,6 +60,16 @@ class EntityHydrator implements Hydrator
      */
     public function hydrate(MetadataEntity $metadata, array $data): EntityBase
     {
+        $idField = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
+        $id = $data[$idField] ?? null;
+
+        if ($id !== null && $this->entityCache->has($metadata->getEntityName(), $id)) {
+            $entity = $this->entityCache->get($metadata->getEntityName(), $id);
+            $this->hydrateRelations($entity, $metadata, $data);
+            return $entity;
+        }
+
+        // New entity case (not yet cached)
         $entity = $this
             ->reflectionCache
             ->getClass($metadata->getEntityName())
@@ -85,7 +98,7 @@ class EntityHydrator implements Hydrator
      * @param EntityBase $entity The entity being hydrated.
      * @param MetadataEntity $metadata The metadata describing the entity.
      * @param array $data The aliased SQL result row.
-     * @throws DateMalformedStringException
+     * @throws DateMalformedStringException|ReflectionException
      */
     private function hydrateColumns(EntityBase $entity, MetadataEntity $metadata, array $data): void
     {
@@ -138,15 +151,15 @@ class EntityHydrator implements Hydrator
      * @param EntityBase $entity The entity being hydrated.
      * @param MetadataEntity $metadata Metadata about the current entity.
      * @param array $data The SQL row data (possibly containing aliased JOIN data).
+     * @throws ReflectionException
      */
-    private function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $data): void
+    public function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $data): void
     {
         foreach ($metadata->getRelations() as $property => $relation) {
-            $related = $this->hydrateRelation($metadata, $property, $relation, $data);
+            $related = $this->hydrateRelation($entity, $metadata, $property, $relation, $data);
 
             if ($related !== null) {
                 $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $related);
-
             }
         }
     }
@@ -157,23 +170,50 @@ class EntityHydrator implements Hydrator
      * This method delegates the hydration strategy based on the relation's type and fetch mode
      * (e.g. Eager or Lazy). Each RelationHydrator must declare support for a relation before being used.
      *
+     * @param EntityBase $entity
      * @param MetadataEntity $parentMetadata Metadata of the parent (owning) entity.
      * @param string $property The property name being hydrated (e.g. "profile").
      * @param array $relation The parsed relation metadata (includes relation + joinColumn).
      * @param array $data The SQL result row containing aliased column data.
-     * @return object|null The hydrated relation object or null.
+     * @return Collection|EntityBase|null
+     * @throws ReflectionException
      */
     private function hydrateRelation(
+        EntityBase $entity,
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,
         array $data
-    ): ?object
-    {
+    ): Collection|EntityBase|null {
         foreach ($this->relationHydrators as $hydrator) {
-            if ($hydrator->supports($relation)) {
-                return $hydrator->hydrate($parentMetadata, $property, $relation, $data);
+            if (!$hydrator->supports($relation)) {
+                continue;
             }
+
+            $result = $hydrator->hydrate($parentMetadata, $property, $relation, $data);
+
+            if (!$this->reflectionCache->hasProperty($entity, $property)) {
+                return $result;
+            }
+
+            $isInitialized = $this->reflectionCache->isInitialized($entity, $property);
+
+            if (!$isInitialized) {
+                if ($result instanceof EntityBase && $relation["relation"] instanceof OneToMany) {
+                    return new Collection([$result]);
+                }
+
+                return $result;
+            }
+
+            $existing = $this->reflectionCache->getValue($entity, $property);
+
+            if ($existing instanceof Collection && $result instanceof EntityBase) {
+                $existing->add($result);
+                return $existing;
+            }
+
+            return $result;
         }
 
         return null;

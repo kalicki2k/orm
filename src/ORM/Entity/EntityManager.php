@@ -171,8 +171,17 @@ class EntityManager {
             )
             ->execute();
 
-        $data = $statement->fetch();
-        return $data ? $this->hydrateEntity($metadata, $data) : null;
+        $rows = $statement->fetchAll();
+        if (!$rows) {
+            return null;
+        }
+
+        $entity = null;
+        foreach ($rows as $row) {
+            $entity = $this->hydrateEntity($metadata, $row);
+        }
+
+        return $entity;
     }
 
     /**

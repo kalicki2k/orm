@@ -3,18 +3,19 @@
 namespace ORM\Hydration;
 
 use Closure;
+use ORM\Attributes\OneToOne;
 use ORM\Entity\EntityManager;
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 
 readonly class LazyOneToOneHydrator implements RelationHydrator
 {
-    public function __construct(private EntityManager $entityManager)
-    {}
+    public function __construct(private EntityManager $entityManager) {}
 
     public function supports(array $relation): bool
     {
-        return $relation["relation"]->fetch === FetchType::Lazy
+        return $relation["relation"] instanceof OneToOne
+            && $relation["relation"]->fetch === FetchType::Lazy
             && isset($relation["joinColumn"]);
     }
 

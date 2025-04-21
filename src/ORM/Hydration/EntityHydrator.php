@@ -6,7 +6,6 @@ use Closure;
 use DateMalformedStringException;
 use DateTimeImmutable;
 use ORM\Attributes\OneToMany;
-use ORM\Cache\EntityCache;
 use ORM\Cache\ReflectionCache;
 use ORM\Collection;
 use ORM\Entity\EntityBase;
@@ -41,7 +40,6 @@ class EntityHydrator implements Hydrator
         private readonly EntityManager $entityManager,
         private readonly MetadataParser $metadataParser,
         private readonly ReflectionCache $reflectionCache,
-        private readonly EntityCache $entityCache,
     ) {
         // Load default relation hydrators
         $this->relationHydrators = [
@@ -62,16 +60,6 @@ class EntityHydrator implements Hydrator
      */
     public function hydrate(MetadataEntity $metadata, array $data): EntityBase
     {
-        $idField = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
-        $id = $data[$idField] ?? null;
-
-        if ($id !== null && $this->entityCache->has($metadata->getEntityName(), $id)) {
-            $entity = $this->entityCache->get($metadata->getEntityName(), $id);
-            $this->hydrateRelations($entity, $metadata, $data);
-            return $entity;
-        }
-
-        // New entity case (not yet cached)
         $entity = $this
             ->reflectionCache
             ->getClass($metadata->getEntityName())
@@ -81,11 +69,6 @@ class EntityHydrator implements Hydrator
         $this->hydrateRelations($entity, $metadata, $data);
 
         $entity->__takeSnapshot($this->metadataParser->extract($entity));
-
-        $id = $this->reflectionCache->getValue($entity, $metadata->getPrimaryKey());
-        if (is_scalar($id)) {
-            $this->entityCache->set($metadata->getEntityName(), $id, $entity);
-        }
 
         return $entity;
     }

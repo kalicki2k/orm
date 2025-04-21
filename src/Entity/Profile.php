@@ -2,6 +2,7 @@
 
 namespace Entity;
 
+use Closure;
 use ORM\Attributes\Column;
 use ORM\Attributes\Entity;
 use ORM\Attributes\GeneratedValue;
@@ -9,6 +10,7 @@ use ORM\Attributes\Id;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
 use ORM\Entity\EntityBase;
+use ORM\Entity\Type\FetchType;
 
 #[Entity]
 #[Table("profiles")]
@@ -22,8 +24,9 @@ class Profile extends EntityBase
     #[Column(type: "text", name: "bio", nullable: true)]
     private ?string $bio = null;
 
-    #[OneToOne(entity: User::class, mappedBy: "profile")]
-    private ?User $user = null;
+    #[OneToOne(entity: User::class, mappedBy: "profile", fetch: FetchType::Eager)]
+    private Closure|User|null $user = null;
+
 
     public function getId(): int
     {
@@ -46,10 +49,15 @@ class Profile extends EntityBase
         return $this;
     }
 
-    public function getUser(): ?User
+    public function getUser(): User
     {
+        if ($this->user instanceof \Closure) {
+            $this->user = ($this->user)();
+        }
+
         return $this->user;
     }
+
 
     public function setUser(?User $user): self
     {

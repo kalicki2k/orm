@@ -15,8 +15,7 @@ readonly class LazyOneToOneHydrator implements RelationHydrator
     public function supports(array $relation): bool
     {
         return $relation["relation"] instanceof OneToOne
-            && $relation["relation"]->fetch === FetchType::Lazy
-            && isset($relation["joinColumn"]);
+            && $relation["relation"]->fetch === FetchType::Lazy;
     }
 
     public function hydrate(
@@ -26,17 +25,44 @@ readonly class LazyOneToOneHydrator implements RelationHydrator
         array $data
     ): ?Closure
     {
-        $joinColumn = $relation["joinColumn"];
-        $fkKey = "{$parentMetadata->getAlias()}_{$joinColumn->name}";
-        $fkValue = $data[$fkKey] ?? null;
+        /** @var OneToOne $oneToOne */
+        $oneToOne = $relation["relation"];
+        $entity = $oneToOne->entity;
+        $mappedBy = $oneToOne->mappedBy ?? null;
+        $joinColumn = $relation["joinColumn"] ?? null;
 
-        if ($fkValue === null) {
-            return null;
+        // Owning side
+        if ($joinColumn !== null) {
+            $foreignKey = $data["{$parentMetadata->getAlias()}_{$joinColumn->name}"] ?? null;
+
+            if ($foreignKey === null) {
+                return null;
+            }
+
+            return fn() => $this->entityManager->findBy($entity, $foreignKey);
         }
 
-        return fn() => $this->entityManager->findBy(
-            $relation["relation"]->entity,
-            $fkValue
-        );
+        // Inverse side
+        if ($mappedBy !== null) {
+            $localId = $data["{$parentMetadata->getAlias()}_{$parentMetadata->getPrimaryKey()}"] ?? null;
+
+            if ($localId === null) {
+                return null;
+            }
+
+            $targetMetadata = $this->entityManager->getMetadata($entity);
+            $targetRelation = $targetMetadata->getRelations()[$mappedBy] ?? null;
+            $targetJoinColumn = $targetRelation['joinColumn'] ?? null;
+
+            if (!$targetJoinColumn) {
+                return null;
+            }
+
+            return fn() => $this->entityManager->findBy($entity, [
+                $targetJoinColumn->name => $localId,
+            ]);
+        }
+
+        return null;
     }
 }

@@ -5,8 +5,6 @@ namespace ORM\Entity;
 use DateMalformedStringException;
 use Generator;
 use InvalidArgumentException;
-use ORM\Cache\EntityCache;
-use ORM\Cache\InMemoryEntityCache;
 use ORM\Cache\ReflectionCache;
 use ORM\Collection;
 use ORM\Drivers\DatabaseDriver;
@@ -74,17 +72,15 @@ class EntityManager {
      * @param DatabaseDriver $databaseDriver The database driver used for query execution (e.g. PDO).
      * @param MetadataParser $metadataParser Parses attribute-based entity metadata.
      * @param LoggerInterface|null $logger Optional PSR-3 logger for debugging or query logging.
-     * @param EntityCache $entityCache Caches entities by class and ID to ensure identity consistency.
      */
     public function __construct(
         private readonly DatabaseDriver $databaseDriver,
         private readonly MetadataParser $metadataParser,
         private readonly ?LoggerInterface $logger = null,
-        private readonly EntityCache $entityCache = new InMemoryEntityCache(),
     ) {
         $this->reflectionCache = $metadataParser->getReflectionCache();
-        $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->entityCache, $this->logger);
-        $this->hydrator = new EntityHydrator($this, $this->metadataParser, $this->reflectionCache, $this->entityCache);
+        $this->unitOfWork = new UnitOfWork($this->databaseDriver, $this->metadataParser, $this->logger);
+        $this->hydrator = new EntityHydrator($this, $this->metadataParser, $this->reflectionCache);
     }
 
     /**
@@ -245,16 +241,6 @@ class EntityManager {
         $entities = [];
 
         foreach ($rows as $row) {
-            $id = $row[$metadata->getAlias() . "_" . $metadata->getPrimaryKey()] ?? null;
-
-            if (is_scalar($id)) {
-                $cached = $this->entityCache->get($entityClass, $id);
-                if ($cached !== null) {
-                    $entities[] = $cached;
-                    continue;
-                }
-            }
-
             $entities[] = $this->hydrateEntity($metadata, $row);
         }
 
@@ -288,13 +274,6 @@ class EntityManager {
      */
     public function findBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): ?EntityBase
     {
-        if (is_scalar($criteria)) {
-            $cached = $this->entityCache->get($entityName, $criteria);
-            if ($cached !== null) {
-                return $cached;
-            }
-        }
-
         $metadata = $this->getMetadata($entityName);
         $rows = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
@@ -527,16 +506,6 @@ class EntityManager {
             ->execute();
 
         while ($row = $statement->fetch()) {
-            $id = $row[$metadata->getAlias() . "_" . $metadata->getPrimaryKey()] ?? null;
-
-            if (is_scalar($id)) {
-                $cached = $this->entityCache->get($entityName, $id);
-                if ($cached !== null) {
-                    yield $cached;
-                    continue;
-                }
-            }
-
             yield $this->hydrateEntity($metadata, $row);
         }
     }

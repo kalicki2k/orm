@@ -28,12 +28,11 @@ class UnitOfWork
     public function __construct(
         readonly DatabaseDriver $databaseDriver,
         private readonly MetadataParser $metadataParser,
-        readonly EntityCache $entityCache,
         readonly ?LoggerInterface $logger = null,
     ) {
-        $this->insertExecutor = new InsertExecutor($databaseDriver, $metadataParser, $entityCache,$logger);
-        $this->updateExecutor = new UpdateExecutor($databaseDriver, $metadataParser, $entityCache, $logger);
-        $this->deleteExecutor = new DeleteExecutor($databaseDriver, $metadataParser, $entityCache, $logger);
+        $this->insertExecutor = new InsertExecutor($databaseDriver, $metadataParser, $logger);
+        $this->updateExecutor = new UpdateExecutor($databaseDriver, $metadataParser, $logger);
+        $this->deleteExecutor = new DeleteExecutor($databaseDriver, $metadataParser, $logger);
         $this->cascadeHandler = new CascadeHandler($metadataParser, $this);
         $this->scheduledForInsert = new SplObjectStorage();
         $this->scheduledForUpdate = new SplObjectStorage();

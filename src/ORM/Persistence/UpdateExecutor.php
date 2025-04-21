@@ -2,7 +2,6 @@
 
 namespace ORM\Persistence;
 
-use ORM\Cache\EntityCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
@@ -15,7 +14,6 @@ final readonly class UpdateExecutor
     public function __construct(
         private DatabaseDriver $databaseDriver,
         private MetadataParser $metadataParser,
-        private EntityCache $entityCache,
         private ?LoggerInterface $logger = null,
     ) {}
 
@@ -33,15 +31,5 @@ final readonly class UpdateExecutor
             ->update()
             ->fromMetadata($metadata, null, $data)
             ->execute();
-
-
-
-        $id = $this->metadataParser
-            ->getReflectionCache()
-            ->getValue($entity, $metadata->getPrimaryKey());
-
-        if (is_scalar($id)) {
-            $this->entityCache->set($entity::class, $id, $entity);
-        }
     }
 }

@@ -1,6 +1,7 @@
 <?php
 
 use Dotenv\Dotenv;
+use Entity\Post;
 use Entity\Profile;
 use Entity\User;
 use ORM\Cache\RedisMetadataCache;
@@ -25,8 +26,17 @@ $driver = PDODriver::default();
 $logger = LoggerFactory::create();
 $parser = new MetadataParser(); // ->with($cache);
 
-
 $entityManager = new EntityManager($driver, $parser, $logger);
+
+##### CREATE #####
+
+$postFound = new Post();
+$postFound->setTitle("ORMs sind magisch!");
+$postFound->setContent("Besonders mit Cascade und Dependency Ordering.");
+
+$post2 = new Post();
+$post2->setTitle("Phase 2 incoming");
+$post2->setContent("OneToMany rules the game.");
 
 $profile = new Profile();
 $profile->setBio('Ich liebe saubere ORMs!');
@@ -36,6 +46,9 @@ $user->setUsername('john_doe');
 $user->setEmail('john@example.com');
 $user->setProfile($profile); // <- OneToOne Verknüpfung
 
+$user->addPost($postFound);
+$user->addPost($post2);
+
 $entityManager->persist($user); // sollte via Cascade auch das Profile persistieren
 $entityManager->flush();
 
@@ -43,9 +56,40 @@ echo "✅ User und Profile gespeichert!\n";
 echo "User-ID: " . $user->getId() . "\n";
 echo "Profile-ID: " . $user->getProfile()->getId() . "\n";
 
-$user = $entityManager->findBy(User::class, 1, ["joins" => ["profile"]]);
-echo "User: " . $user->getUsername() . "\n";
+##########
 
-$profile = $user->getProfile();
-echo "Profile ID: " . $profile->getId() . "\n";
-echo "Bio: " . $profile->getBio() . "\n";
+##### FindBy Profile and User ######
+
+$profile = $entityManager->findBy(Profile::class, 1, ["joins" => ["user"]]);
+
+echo "Profile-ID: " . $profile->getId() . "\n";
+echo "Profile-Bio: " . $profile->getBio() . "\n";
+echo "User-ID: " . $profile->getUser()->getId() . "\n";
+echo "Username: " . $profile->getUser()->getUsername() . "\n";
+
+##########
+
+##### FindBy User and Profile
+
+
+$user = $entityManager->findBy(User::class, 1, ["joins" => ["profile"]]);
+
+echo "User-ID: " . $user->getId() . "\n";
+echo "Profile-Bio: " . $user->getProfile()->getBio() . "\n";
+
+##########
+
+##### FindBy User #####
+
+$userFound = $entityManager->findBy(User::class, 1, ["joins" => ["profile", "posts"]]);
+echo "User: " . $userFound->getUsername() . "\n";
+
+$profileFound = $userFound->getProfile();
+echo "Profile ID: " . $profileFound->getId() . "\n";
+echo "Bio: " . $profileFound->getBio() . "\n";
+
+echo "Posts:\n";
+
+foreach ($userFound->getPosts() as $postFound) {
+    echo "- " . $postFound->getTitle() . " (" . $postFound->getContent() . ")\n";
+}

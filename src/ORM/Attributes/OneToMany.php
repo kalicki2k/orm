@@ -12,6 +12,6 @@ class OneToMany
         public string $entity,
         public ?string $mappedBy = null,
         public ?array $cascade = null,
-        public FetchType $fetch = FetchType::Eager,
+        public FetchType $fetch = FetchType::Lazy,
     ){}
 }

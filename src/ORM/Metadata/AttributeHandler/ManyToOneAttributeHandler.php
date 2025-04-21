@@ -9,7 +9,7 @@ use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
 use ReflectionProperty;
 
-class ManyToOneAttributeHandler implements MetadataAttributeHandler
+final readonly class ManyToOneAttributeHandler implements MetadataAttributeHandler
 {
     public function __construct(private MetadataParser $parser) {}
 

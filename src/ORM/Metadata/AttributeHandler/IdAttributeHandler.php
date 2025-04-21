@@ -8,7 +8,7 @@ use ORM\Attributes\Id;
 use ORM\Metadata\MetadataEntity;
 use ReflectionProperty;
 
-class IdAttributeHandler implements MetadataAttributeHandler
+final readonly class IdAttributeHandler implements MetadataAttributeHandler
 {
 
     public function supports(ReflectionProperty $property): bool

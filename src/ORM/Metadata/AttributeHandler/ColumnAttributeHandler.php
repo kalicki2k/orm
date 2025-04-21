@@ -6,7 +6,7 @@ use ORM\Attributes\Column;
 use ORM\Metadata\MetadataEntity;
 use ReflectionProperty;
 
-class ColumnAttributeHandler implements MetadataAttributeHandler
+final readonly class ColumnAttributeHandler implements MetadataAttributeHandler
 {
     public function supports(ReflectionProperty $property): bool
     {

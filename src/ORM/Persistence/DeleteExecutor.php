@@ -2,7 +2,6 @@
 
 namespace ORM\Persistence;
 
-use ORM\Cache\EntityCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
@@ -16,7 +15,6 @@ final readonly class DeleteExecutor
     public function __construct(
         private DatabaseDriver $databaseDriver,
         private MetadataParser $metadataParser,
-        private EntityCache $entityCache,
         private ?LoggerInterface $logger = null,
     ) {}
 
@@ -40,9 +38,5 @@ final readonly class DeleteExecutor
             ->delete()
             ->fromMetadata($metadata, null, [], [$primaryKeyName => $id])
             ->execute();
-
-        if (is_scalar($id)) {
-            $this->entityCache->clear($entity::class, $id);
-        }
     }
 }

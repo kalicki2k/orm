@@ -7,6 +7,7 @@ use ORM\Entity\Type\CascadeType;
 use ORM\Metadata\MetadataParser;
 use ORM\UnitOfWork;
 use ReflectionException;
+use Traversable;
 
 final readonly class CascadeHandler
 {
@@ -46,7 +47,7 @@ final readonly class CascadeHandler
                 continue;
             }
 
-            if ($relatedEntity instanceof \Traversable) {
+            if ($relatedEntity instanceof Traversable) {
                 foreach ($relatedEntity as $item) {
                     if ($item instanceof EntityBase && in_array($action, $cascade, true)) {
                         match ($action) {

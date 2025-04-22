@@ -238,13 +238,12 @@ class EntityManager {
             ->execute()
             ->fetchAll();
 
-        $alias     = $metadata->getAlias();
-        $pkColumn  = $alias . '_' . $metadata->getPrimaryKey();
-        $grouped   = [];
+        $primaryKeyColumn = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
+        $grouped = [];
 
         foreach ($rows as $row) {
-            $pk = $row[$pkColumn];
-            $grouped[$pk][] = $row;
+            $primaryKey = $row[$primaryKeyColumn];
+            $grouped[$primaryKey][] = $row;
         }
 
         $entities = [];
@@ -506,7 +505,11 @@ class EntityManager {
         array $options = [],
     ): Generator
     {
+        $currentId = null;
+        $group = [];
         $metadata = $this->getMetadata($entityName);
+        $primaryKeyColumn = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
+
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
@@ -519,7 +522,29 @@ class EntityManager {
             ->execute();
 
         while ($row = $statement->fetch()) {
-            yield $this->hydrateEntity($metadata, $row);
+            $id = $row[$primaryKeyColumn];
+
+            if ($currentId !== null && $id !== $currentId) {
+                $entity = $this->hydrateEntity($metadata, array_shift($group));
+
+                foreach ($group as $extraRow) {
+                    $this->hydrator->hydrateRelations($entity, $metadata, $extraRow);
+                }
+
+                yield $entity;
+                $group = [];
+            }
+
+            $currentId = $id;
+            $group[] = $row;
+        }
+
+        if (!empty($group)) {
+            $entity = $this->hydrateEntity($metadata, array_shift($group));
+            foreach ($group as $extraRow) {
+                $this->hydrator->hydrateRelations($entity, $metadata, $extraRow);
+            }
+            yield $entity;
         }
     }
 }

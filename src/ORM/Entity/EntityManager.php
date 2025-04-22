@@ -220,7 +220,7 @@ class EntityManager {
      * @template T of EntityBase
      *
      * @param class-string<T> $entityClass Fully-qualified class name of the entity (e.g. User::class).
-     * @param array $criteria Optional WHERE clause (e.g. ['status' => 'active']).
+     * @param Expression|int|string|array|null $criteria Optional WHERE clause (e.g. ['status' => 'active']).
      * @param array $options Optional query options (e.g. 'limit', 'offset', 'orderBy', 'joins').
      *
      * @return Collection<T> Collection of hydrated entities of type T.
@@ -228,20 +228,34 @@ class EntityManager {
      * @throws ReflectionException If metadata or reflection fails.
      * @throws DateMalformedStringException If date/time conversion fails during hydration.
      */
-    public function findAll(string $entityClass, array $criteria = [], array $options = []): Collection
+    public function findAll(string $entityClass, Expression|int|string|array|null $criteria = null, array $options = []): Collection
     {
         $metadata = $this->getMetadata($entityClass);
 
-        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
+        $rows = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
-            ->fromMetadata($metadata, fn(string $class) => $this->getMetadata($class), [], $criteria, $options)
-            ->execute();
+            ->fromMetadata($metadata, fn(string $class) => $this->getMetadata($class), [], $this->normalizeCriteria($criteria, $metadata), $options)
+            ->execute()
+            ->fetchAll();
 
-        $rows = $statement->fetchAll();
-        $entities = [];
+        $alias     = $metadata->getAlias();
+        $pkColumn  = $alias . '_' . $metadata->getPrimaryKey();
+        $grouped   = [];
 
         foreach ($rows as $row) {
-            $entities[] = $this->hydrateEntity($metadata, $row);
+            $pk = $row[$pkColumn];
+            $grouped[$pk][] = $row;
+        }
+
+        $entities = [];
+        foreach ($grouped as $block) {
+            $entity   = $this->hydrateEntity($metadata, array_shift($block));
+
+            foreach ($block as $row) {
+                $this->hydrator->hydrateRelations($entity, $metadata, $row);
+            }
+
+            $entities[] = $entity;
         }
 
         return new Collection($entities);
@@ -261,13 +275,11 @@ class EntityManager {
      * Note: In case of EAGER OneToMany relations, only the *last* row is used to construct the base entity.
      * Hydration strategies for collections are handled inside the EntityHydrator.
      *
-     * @template T of EntityBase
-     *
-     * @param class-string<T> $entityName Fully-qualified class name of the entity (e.g. User::class).
+     * @param class-string<EntityBase> $entityName Fully-qualified class name of the entity (e.g. User::class).
      * @param Expression|int|string|array|null $criteria Optional criteria or primary key value.
      * @param array $options Optional query settings (e.g. joins, orderBy, limit).
      *
-     * @return T|null Hydrated entity instance or null if no result was found.
+     * @return EntityBase|null Hydrated entity instance or null if no result was found.
      *
      * @throws DateMalformedStringException If date/time conversion fails during hydration.
      * @throws ReflectionException If metadata or reflection fails.
@@ -291,9 +303,10 @@ class EntityManager {
             return null;
         }
 
-        $entity = null;
+        $entity   = $this->hydrateEntity($metadata, array_shift($rows));
+
         foreach ($rows as $row) {
-            $entity = $this->hydrateEntity($metadata, $row);
+            $this->hydrator->hydrateRelations($entity, $metadata, $row);
         }
 
         return $entity;

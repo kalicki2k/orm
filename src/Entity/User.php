@@ -43,7 +43,7 @@ class User extends EntityBase
         entity: Post::class,
         mappedBy: "user",
         cascade: [CascadeType::Persist, CascadeType::Remove],
-        fetch: FetchType::Lazy,
+        fetch: FetchType::Eager,
     )]
     private Collection|Closure $posts;
 

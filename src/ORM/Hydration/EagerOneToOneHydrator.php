@@ -21,24 +21,26 @@ final readonly class EagerOneToOneHydrator implements RelationHydrator
     }
 
     /**
+     * @param EntityBase $parentEntity
      * @param MetadataEntity $parentMetadata
      * @param string $property
      * @param array $relation
-     * @param array $data
+     * @param array $row
      * @return EntityBase|null
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
     public function hydrate(
+        EntityBase $parentEntity,
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,
-        array $data
+        array $row
     ): ?EntityBase {
         $relationAlias = $parentMetadata->getRelationAlias($property);
 
         $relationData = array_filter(
-            $data,
+            $row,
             fn ($key) => str_starts_with($key, "{$relationAlias}_"),
             ARRAY_FILTER_USE_KEY
         );
@@ -51,6 +53,6 @@ final readonly class EagerOneToOneHydrator implements RelationHydrator
         $relatedMetadata = $this->entityManager->getMetadata($relation["relation"]->entity);
         $relatedMetadata->setAlias($relationAlias);
 
-        return $this->entityManager->hydrateEntity($relatedMetadata, $data);
+        return $this->entityManager->hydrateEntity($relatedMetadata, $row);
     }
 }

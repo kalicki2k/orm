@@ -2,12 +2,8 @@
 
 namespace ORM\Hydration;
 
-use Closure;
 use DateMalformedStringException;
-use DateTimeImmutable;
-use ORM\Attributes\OneToMany;
 use ORM\Cache\ReflectionCache;
-use ORM\Collection;
 use ORM\Entity\EntityBase;
 use ORM\Entity\EntityManager;
 use ORM\Metadata\MetadataEntity;
@@ -50,7 +46,7 @@ class EntityHydrator implements Hydrator
             new LazyOneToOneHydrator($this->entityManager),
             new LazyOneToManyHydrator($this->entityManager),
             new EagerOneToOneHydrator($this->entityManager),
-            new EagerOneToManyHydrator($this->entityManager),
+            new EagerOneToManyHydrator($this->entityManager, $this->reflectionCache, $this->metadataParser),
         ];
     }
 
@@ -91,69 +87,22 @@ class EntityHydrator implements Hydrator
      *
      * @param EntityBase $entity The entity instance to hydrate.
      * @param MetadataEntity $metadata Metadata for the given entity class.
-     * @param array $data The current SQL result row with aliased columns.
+     * @param array $row The current SQL result row with aliased columns.
      * @throws ReflectionException
      */
-    public function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $data): void
+    public function hydrateRelations(EntityBase $entity, MetadataEntity $metadata, array $row): void
     {
+
         foreach ($metadata->getRelations() as $property => $relation) {
-            $related = $this->hydrateRelation($metadata, $property, $relation, $data);
-
-            if ($related === null) {
-                continue;
-            }
-
-            if (
-                $this->reflectionCache->hasProperty($entity, $property)
-                && $this->reflectionCache->isInitialized($entity, $property)
-            ) {
-                $existing = $this->reflectionCache->getValue($entity, $property);
-
-                if ($existing instanceof Collection && $related instanceof EntityBase) {
-                    $existing->add($related);
+            foreach ($this->relationHydrators as $hydrator) {
+                if (!$hydrator->supports($relation)) {
                     continue;
                 }
-            }
 
-            if ($related instanceof EntityBase && $relation["relation"] instanceof OneToMany) {
-                $this->reflectionCache->setValue($entity, $property, new Collection([$related]));
-                continue;
-            }
-
-            $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $related);
-        }
-    }
-
-    /**
-     * Resolves and hydrates a single relational property using the appropriate RelationHydrator.
-     *
-     * This method selects a suitable RelationHydrator based on relation type (e.g. OneToOne, OneToMany)
-     * and fetch strategy (Lazy or Eager), and delegates hydration to it.
-     *
-     * Return types by strategy:
-     * - OneToOne (eager): Returns the related EntityBase or null.
-     * - OneToOne (lazy): Returns a Closure|null to lazily load the related entity.
-     * - OneToMany (eager): Returns one EntityBase per JOIN row (collected into a Collection externally).
-     * - OneToMany (lazy): Returns a Closure that resolves to a Collection of related entities.
-     *
-     * @param MetadataEntity $parentMetadata Metadata of the owning entity (e.g. User).
-     * @param string $property The property name to hydrate (e.g. "profile", "posts").
-     * @param array $relation Relation metadata as parsed by MetadataParser.
-     * @param array $data Current SQL result row (with aliased JOIN columns).
-     * @return Closure|Collection|EntityBase|null Hydrated relation value or deferred Closure.
-     */
-    private function hydrateRelation(
-        MetadataEntity $parentMetadata,
-        string $property,
-        array $relation,
-        array $data
-    ): Closure|Collection|EntityBase|null {
-        foreach ($this->relationHydrators as $hydrator) {
-            if ($hydrator->supports($relation)) {
-                return $hydrator->hydrate($parentMetadata, $property, $relation, $data);
+                $related = $hydrator->hydrate($entity, $metadata, $property, $relation, $row);
+                $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $related);
+                break;
             }
         }
-
-        return null;
     }
 }

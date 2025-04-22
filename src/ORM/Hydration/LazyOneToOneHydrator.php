@@ -4,11 +4,12 @@ namespace ORM\Hydration;
 
 use Closure;
 use ORM\Attributes\OneToOne;
+use ORM\Entity\EntityBase;
 use ORM\Entity\EntityManager;
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 
-readonly class LazyOneToOneHydrator implements RelationHydrator
+final readonly class LazyOneToOneHydrator implements RelationHydrator
 {
     public function __construct(private EntityManager $entityManager) {}
 
@@ -19,10 +20,11 @@ readonly class LazyOneToOneHydrator implements RelationHydrator
     }
 
     public function hydrate(
+        EntityBase $parentEntity,
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,
-        array $data
+        array $row
     ): ?Closure
     {
         /** @var OneToOne $oneToOne */
@@ -33,7 +35,7 @@ readonly class LazyOneToOneHydrator implements RelationHydrator
 
         // Owning side
         if ($joinColumn !== null) {
-            $foreignKey = $data["{$parentMetadata->getAlias()}_{$joinColumn->name}"] ?? null;
+            $foreignKey = $row["{$parentMetadata->getAlias()}_{$joinColumn->name}"] ?? null;
 
             if ($foreignKey === null) {
                 return null;
@@ -44,7 +46,7 @@ readonly class LazyOneToOneHydrator implements RelationHydrator
 
         // Inverse side
         if ($mappedBy !== null) {
-            $localId = $data["{$parentMetadata->getAlias()}_{$parentMetadata->getPrimaryKey()}"] ?? null;
+            $localId = $row["{$parentMetadata->getAlias()}_{$parentMetadata->getPrimaryKey()}"] ?? null;
 
             if ($localId === null) {
                 return null;

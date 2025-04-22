@@ -4,6 +4,7 @@ namespace ORM\Hydration;
 
 use Closure;
 use ORM\Attributes\ManyToOne;
+use ORM\Entity\EntityBase;
 use ORM\Entity\EntityManager;
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
@@ -20,13 +21,14 @@ final readonly class LazyManyToOneHydrator implements RelationHydrator
     }
 
     public function hydrate(
+        EntityBase $parentEntity,
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,
-        array $data
+        array $row
     ): ?Closure {
         $joinColumn = $relation['joinColumn'];
-        $foreignKey = $data["{$parentMetadata->getAlias()}_{$joinColumn->name}"] ?? null;
+        $foreignKey = $row["{$parentMetadata->getAlias()}_{$joinColumn->name}"] ?? null;
 
         if ($foreignKey === null) {
             return null;

@@ -5,6 +5,7 @@ namespace ORM\Hydration;
 use Closure;
 use ORM\Attributes\OneToMany;
 use ORM\Collection;
+use ORM\Entity\EntityBase;
 use ORM\Entity\EntityManager;
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
@@ -69,22 +70,23 @@ final readonly class LazyOneToManyHydrator implements RelationHydrator
      * @param MetadataEntity $parentMetadata The metadata for the owning (parent) entity.
      * @param string $property The property name in the parent entity (e.g. "posts").
      * @param array $relation The relation config including `mappedBy` and target entity.
-     * @param array $data The current SQL result row from the parent entity query.
+     * @param array $row The current SQL result row from the parent entity query.
      * @return Closure Returns a Closure that lazily loads the child collection when called.
      *
      * @see Collection
      */
     public function hydrate(
+        EntityBase $parentEntity,
         MetadataEntity $parentMetadata,
         string $property,
         array $relation,
-        array $data
+        array $row
     ): Closure {
         $targetEntity = $relation['relation']->entity;
         $mappedBy = $relation['relation']->mappedBy;
 
-        return function () use ($parentMetadata, $targetEntity, $mappedBy, $data) {
-            $id = $data["{$parentMetadata->getAlias()}_{$parentMetadata->getPrimaryKey()}"] ?? null;
+        return function () use ($parentMetadata, $targetEntity, $mappedBy, $row) {
+            $id = $row["{$parentMetadata->getAlias()}_{$parentMetadata->getPrimaryKey()}"] ?? null;
 
             if ($id === null) {
                 return new Collection();

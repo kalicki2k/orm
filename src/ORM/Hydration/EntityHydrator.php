@@ -33,6 +33,8 @@ use ReflectionException;
  */
 class EntityHydrator implements Hydrator
 {
+    private ColumnHydrator $columnHydrator;
+
     /** @var RelationHydrator[] */
     private array $relationHydrators;
 
@@ -41,6 +43,8 @@ class EntityHydrator implements Hydrator
         private readonly MetadataParser $metadataParser,
         private readonly ReflectionCache $reflectionCache,
     ) {
+        $this->columnHydrator = new ColumnHydrator($this->reflectionCache);
+
         // Load default relation hydrators
         $this->relationHydrators = [
             new LazyOneToOneHydrator($this->entityManager),
@@ -54,78 +58,23 @@ class EntityHydrator implements Hydrator
      * Hydrates a single entity instance from its metadata and a row of SQL data.
      *
      * @param MetadataEntity $metadata The metadata of the entity to hydrate.
-     * @param array $data The aliased SQL row result.
+     * @param array $row The aliased SQL row result.
      * @return EntityBase The fully hydrated entity.
      * @throws ReflectionException|DateMalformedStringException
      */
-    public function hydrate(MetadataEntity $metadata, array $data): EntityBase
+    public function hydrate(MetadataEntity $metadata, array $row): EntityBase
     {
         $entity = $this
             ->reflectionCache
             ->getClass($metadata->getEntityName())
             ->newInstanceWithoutConstructor();
 
-        $this->hydrateColumns($entity, $metadata, $data);
-        $this->hydrateRelations($entity, $metadata, $data);
+        $this->columnHydrator->hydrate($entity, $metadata, $row);
+        $this->hydrateRelations($entity, $metadata, $row);
 
         $entity->__takeSnapshot($this->metadataParser->extract($entity));
 
         return $entity;
-    }
-
-    /**
-     * Hydrates primitive column values from the result set into the entity.
-     *
-     * Uses alias mapping (e.g., `user_email`) to resolve values.
-     * Skips JoinColumns (like `profile_id`) if no matching property exists,
-     * since they will be handled later in relation hydration (Lazy/Eager).
-     *
-     * @param EntityBase $entity The entity being hydrated.
-     * @param MetadataEntity $metadata The metadata describing the entity.
-     * @param array $data The aliased SQL result row.
-     * @throws DateMalformedStringException|ReflectionException
-     */
-    private function hydrateColumns(EntityBase $entity, MetadataEntity $metadata, array $data): void
-    {
-        foreach ($metadata->getColumns() as $property => $column) {
-            $name = "{$metadata->getAlias()}_{$column["name"]}";
-
-            if (!array_key_exists($name, $data)) {
-                continue;
-            }
-
-            if ($this->reflectionCache->hasProperty($entity, $property)) {
-                $value = $this->hydrateColumn($data[$name], $column["type"] ?? null);
-                $this->reflectionCache->getProperty($entity, $property)->setValue($entity, $value);
-            }
-        }
-    }
-
-    /**
-     * Converts a raw database value to its PHP representation based on the expected column type.
-     *
-     * This method is used during column hydration to normalize SQL values
-     * into proper native PHP types (e.g. DateTime, int, string).
-     *
-     * @param mixed $value The raw value from the database.
-     * @param string|null $type Optional column type hint (e.g. "int", "datetime").
-     * @return mixed The hydrated PHP value.
-     * @throws DateMalformedStringException
-     */
-    private function hydrateColumn(mixed $value, ?string $type = null): mixed
-    {
-        if (!isset($type)) {
-            return $value;
-        }
-
-        return match (strtolower($type)) {
-            "int", "integer" => (int) $value,
-            "float", "double" => (float) $value,
-            "bool", "boolean" => (bool) $value,
-            "datetime" => new DateTimeImmutable($value),
-            "json" => json_decode($value, true),
-            default => $value,
-        };
     }
 
     /**

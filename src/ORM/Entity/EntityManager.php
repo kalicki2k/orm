@@ -116,18 +116,7 @@ class EntityManager {
      */
     public function persist(EntityBase|array $entity): self
     {
-        if (is_array($entity)) {
-            foreach ($entity as $value) {
-                if (!($value instanceof EntityBase)) {
-                    throw new InvalidArgumentException("Expected instance of EntityBase.");
-                }
-                $this->persist($value);
-            }
-            return $this;
-        }
-
-        $this->unitOfWork->scheduleForInsert($entity);
-        return $this;
+        return $this->handleEntities($entity, fn(EntityBase $e) => $this->unitOfWork->scheduleForInsert($e));
     }
 
     /**
@@ -161,18 +150,7 @@ class EntityManager {
      */
     public function update(EntityBase|array $entity): self
     {
-        if (is_array($entity)) {
-            foreach ($entity as $value) {
-                if (!($value instanceof EntityBase)) {
-                    throw new InvalidArgumentException("Expected instance of EntityBase.");
-                }
-                $this->update($value);
-            }
-            return $this;
-        }
-
-        $this->unitOfWork->scheduleForUpdate($entity);
-        return $this;
+        return $this->handleEntities($entity, fn(EntityBase $e) => $this->unitOfWork->scheduleForUpdate($e));
     }
 
     /**
@@ -196,18 +174,7 @@ class EntityManager {
      */
     public function delete(EntityBase|array $entity): self
     {
-        if (is_array($entity)) {
-            foreach ($entity as $value) {
-                if (!($value instanceof EntityBase)) {
-                    throw new InvalidArgumentException("Expected instance of EntityBase.");
-                }
-                $this->delete($value);
-            }
-            return $this;
-        }
-
-        $this->unitOfWork->scheduleForDelete($entity);
-        return $this;
+        return $this->handleEntities($entity, fn(EntityBase $e) => $this->unitOfWork->scheduleForDelete($e));
     }
 
     /**
@@ -238,13 +205,12 @@ class EntityManager {
             ->execute()
             ->fetchAll();
 
-        $alias     = $metadata->getAlias();
-        $pkColumn  = $alias . '_' . $metadata->getPrimaryKey();
-        $grouped   = [];
+        $primaryKeyColumn = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
+        $grouped = [];
 
         foreach ($rows as $row) {
-            $pk = $row[$pkColumn];
-            $grouped[$pk][] = $row;
+            $primaryKey = $row[$primaryKeyColumn];
+            $grouped[$primaryKey][] = $row;
         }
 
         $entities = [];
@@ -462,6 +428,36 @@ class EntityManager {
     }
 
     /**
+     * Handles one or multiple entities using the provided callback.
+     *
+     * @param EntityBase|array<EntityBase> $entity The entity or list of entities to handle.
+     * @param callable $callback The callback to execute for each entity.
+     *
+     * @return $this Fluent interface for method chaining.
+     *
+     * @throws InvalidArgumentException If array contains non-EntityBase elements.
+     */
+    private function handleEntities(EntityBase|array $entity, callable $callback): self
+    {
+        if (is_array($entity)) {
+            foreach ($entity as $value) {
+                if (!($value instanceof EntityBase)) {
+                    throw new InvalidArgumentException("Expected instance of EntityBase.");
+                }
+                $callback($value);
+            }
+            return $this;
+        }
+
+        if (!($entity instanceof EntityBase)) {
+            throw new InvalidArgumentException("Expected instance of EntityBase.");
+        }
+
+        $callback($entity);
+        return $this;
+    }
+
+    /**
      * Hydrates a new entity instance from a single SQL result row using the given metadata.
      *
      * Internally delegates to the configured `EntityHydrator` and handles hydration of both
@@ -498,7 +494,6 @@ class EntityManager {
      * @return Generator<T> A generator yielding hydrated entity instances.
      *
      * @throws ReflectionException If metadata or reflection fails.
-     * @throws DateMalformedStringException On invalid datetime format in hydration.
      */
     private function streamInternal(
         string $entityName,
@@ -507,6 +502,8 @@ class EntityManager {
     ): Generator
     {
         $metadata = $this->getMetadata($entityName);
+        $primaryKeyColumn = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
+
         $statement = new QueryBuilder($this->databaseDriver, $this->logger)
             ->select()
             ->fromMetadata(
@@ -518,8 +515,39 @@ class EntityManager {
             )
             ->execute();
 
+        yield from $this->groupAndHydrateEntities($statement, $primaryKeyColumn, $metadata);
+    }
+
+    private function groupAndHydrateEntities($statement, string $primaryKeyColumn, MetadataEntity $metadata): Generator
+    {
+        $currentId = null;
+        $group = [];
+
         while ($row = $statement->fetch()) {
-            yield $this->hydrateEntity($metadata, $row);
+            $id = $row[$primaryKeyColumn];
+
+            if ($currentId !== null && $id !== $currentId) {
+                yield $this->hydrateGroupedEntity($group, $metadata);
+                $group = [];
+            }
+
+            $currentId = $id;
+            $group[] = $row;
         }
+
+        if (!empty($group)) {
+            yield $this->hydrateGroupedEntity($group, $metadata);
+        }
+    }
+
+    private function hydrateGroupedEntity(array $group, MetadataEntity $metadata): EntityBase
+    {
+        $entity = $this->hydrateEntity($metadata, array_shift($group));
+
+        foreach ($group as $extraRow) {
+            $this->hydrator->hydrateRelations($entity, $metadata, $extraRow);
+        }
+
+        return $entity;
     }
 }

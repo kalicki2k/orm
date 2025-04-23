@@ -53,7 +53,7 @@ final class JoinBuilder
             $joinTable = $relatedMetadata->getTable();
             $on = null;
 
-            if ($relation->mappedBy !== null) {
+            if (property_exists($relation, "mappedBy") && $relation->mappedBy !== null) {
                 $owning = $relatedMetadata->getRelations()[$relation->mappedBy];
                 $joinColumn = $owning["joinColumn"];
 

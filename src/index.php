@@ -30,31 +30,31 @@ $entityManager = new EntityManager($driver, $parser, $logger);
 
 ##### CREATE #####
 
-//$postFound = new Post();
-//$postFound->setTitle("ORMs sind magisch!");
-//$postFound->setContent("Besonders mit Cascade und Dependency Ordering.");
-//
-//$post2 = new Post();
-//$post2->setTitle("Phase 2 incoming");
-//$post2->setContent("OneToMany rules the game.");
-//
-//$profile = new Profile();
-//$profile->setBio('Ich liebe saubere ORMs!');
-//
-//$user = new User();
-//$user->setUsername('john_doe');
-//$user->setEmail('john@example.com');
-//$user->setProfile($profile); // <- OneToOne Verknüpfung
-//
-//$user->addPost($postFound);
-//$user->addPost($post2);
-//
-//$entityManager->persist($user); // sollte via Cascade auch das Profile persistieren
-//$entityManager->flush();
+$postFound = new Post();
+$postFound->setTitle("ORMs sind magisch!");
+$postFound->setContent("Besonders mit Cascade und Dependency Ordering.");
 
-//echo "✅ User und Profile gespeichert!\n";
-//echo "User-ID: " . $user->getId() . "\n";
-//echo "Profile-ID: " . $user->getProfile()->getId() . "\n";
+$post2 = new Post();
+$post2->setTitle("Phase 2 incoming");
+$post2->setContent("OneToMany rules the game.");
+
+$profile = new Profile();
+$profile->setBio('Ich liebe saubere ORMs!');
+
+$user = new User();
+$user->setUsername('john_doe');
+$user->setEmail('john@example.com');
+$user->setProfile($profile); // <- OneToOne Verknüpfung
+
+$user->addPost($postFound);
+$user->addPost($post2);
+
+$entityManager->persist($user); // sollte via Cascade auch das Profile persistieren
+$entityManager->flush();
+
+echo "✅ User und Profile gespeichert!\n";
+echo "User-ID: " . $user->getId() . "\n";
+echo "Profile-ID: " . $user->getProfile()->getId() . "\n";
 
 ##########
 
@@ -113,3 +113,56 @@ foreach ($result as $user) {
 
     echo str_repeat('-', 40) . "\n";
 }
+
+$userFound = null;
+foreach ($entityManager->streamBy(
+    User::class,
+    1,
+    ['joins' => ['profile', 'posts']]
+) as $user) {
+    $userFound = $user;
+    break;  // nur das erste (und einzige) Ergebnis interessiert uns
+}
+
+if ($userFound === null) {
+    echo "Kein User mit ID 1 gefunden.\n";
+    exit;
+}
+
+echo "User: " . $userFound->getUsername() . "\n";
+
+$profileFound = $userFound->getProfile();
+echo "Profile ID: " . $profileFound->getId() . "\n";
+echo "Bio: " . $profileFound->getBio() . "\n";
+
+echo "Posts:\n";
+foreach ($userFound->getPosts() as $postFound) {
+    echo "- " . $postFound->getTitle() . " (" . $postFound->getContent() . ")\n";
+}
+
+echo "Alle User (streamAll):\n";
+
+foreach ($entityManager->streamAll(
+    User::class,
+    ['joins' => ['profile', 'posts']]
+) as $user) {
+    echo "User #{$user->getId()}: {$user->getUsername()} <{$user->getEmail()}>\n";
+
+    $profile = $user->getProfile();
+    echo "  Profile: ID={$profile->getId()}, Bio=\"{$profile->getBio()}\"\n";
+
+    $count = count($user->getPosts());
+    echo "  Posts ({$count}):\n";
+    foreach ($user->getPosts() as $post) {
+        echo "    • [{$post->getId()}] {$post->getTitle()} – {$post->getContent()}\n";
+    }
+
+    echo str_repeat('-', 40) . "\n";
+}
+
+$post = $entityManager->findBy(Post::class, 1, ["joins" => ["user"]]);
+
+echo "Post: " . $post->getTitle() . "\n";
+
+// Lazy Loading wird hier getriggert
+echo "Autor: " . $post->getUser()->getUsername() . "\n";

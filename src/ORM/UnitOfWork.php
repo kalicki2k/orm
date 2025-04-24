@@ -9,22 +9,36 @@ use ORM\Entity\Type\CascadeType;
 use ORM\Metadata\MetadataParser;
 use ORM\Persistence\CascadeHandler;
 use ORM\Persistence\DeleteExecutor;
+use ORM\Persistence\DeleteSchedule;
 use ORM\Persistence\InsertExecutor;
+use ORM\Persistence\InsertSchedule;
 use ORM\Persistence\UpdateExecutor;
+use ORM\Persistence\UpdateSchedule;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
 use SplObjectStorage;
 
+/**
+ * The UnitOfWork class manages the lifecycle of entities and their persistence state.
+ * It tracks changes (inserts, updates, deletes) and commits them to the database in a single transaction.
+ */
 class UnitOfWork
 {
     private InsertExecutor $insertExecutor;
     private UpdateExecutor $updateExecutor;
     private DeleteExecutor $deleteExecutor;
     private CascadeHandler $cascadeHandler;
-    private SplObjectStorage $scheduledForInsert;
-    private SplObjectStorage $scheduledForUpdate;
-    private SplObjectStorage $scheduledForDelete;
+    private InsertSchedule $insertSchedule;
+    private UpdateSchedule $updateSchedule;
+    private DeleteSchedule $deleteSchedule;
 
+    /**
+     * Constructor for the UnitOfWork.
+     *
+     * @param DatabaseDriver $databaseDriver The database driver for executing queries.
+     * @param MetadataParser $metadataParser The metadata parser for entity reflection and metadata handling.
+     * @param LoggerInterface|null $logger Optional logger for debugging and logging operations.
+     */
     public function __construct(
         readonly DatabaseDriver $databaseDriver,
         private readonly MetadataParser $metadataParser,
@@ -34,101 +48,87 @@ class UnitOfWork
         $this->updateExecutor = new UpdateExecutor($databaseDriver, $metadataParser, $logger);
         $this->deleteExecutor = new DeleteExecutor($databaseDriver, $metadataParser, $logger);
         $this->cascadeHandler = new CascadeHandler($metadataParser, $this);
-        $this->scheduledForInsert = new SplObjectStorage();
-        $this->scheduledForUpdate = new SplObjectStorage();
-        $this->scheduledForDelete = new SplObjectStorage();
+        $this->insertSchedule = new InsertSchedule($metadataParser);
+        $this->updateSchedule = new UpdateSchedule();
+        $this->deleteSchedule = new DeleteSchedule();
     }
 
     /**
+     * Schedules an entity for insertion into the database.
+     *
+     * @param EntityBase $entity The entity to be inserted.
      * @throws ReflectionException
      */
     public function scheduleForInsert(EntityBase $entity): void
     {
-        if ($this->scheduledForInsert->contains($entity)) {
-            return;
-        }
-
         if ($entity->__isPersisted()) {
             return;
         }
 
-        $metadata = $this->metadataParser->parse($entity::class);
-        $reflection = $this->metadataParser->getReflectionCache();
-
-        foreach ($metadata->getColumns() as $property => $column) {
-            $default = $column['attributes']->default ?? null;
-
-            if (!$reflection->isInitialized($entity, $property) && $default !== null) {
-                $reflection->setValue($entity, $property, $default);
-            }
-        }
-
-        $this->scheduledForInsert->attach($entity);
-        $this->handleCascades($entity, CascadeType::Persist);
+        $this->insertSchedule->schedule($entity);
+        $this->cascadeHandler->handle($entity, CascadeType::Persist);
     }
 
     /**
+     * Schedules an entity for update in the database.
+     *
+     * @param EntityBase $entity The entity to be updated.
      * @throws ReflectionException
      */
     public function scheduleForUpdate(EntityBase $entity): void
     {
-        if ($this->scheduledForUpdate->contains($entity)) {
-            return;
-        }
-
         if (!$entity->__isDirty($this->metadataParser->extract($entity))) {
             return;
         }
 
-        $this->scheduledForUpdate->attach($entity);
+        $this->updateSchedule->schedule($entity);
     }
 
     /**
+     * Schedules an entity for deletion from the database.
+     *
+     * @param EntityBase $entity The entity to be deleted.
      * @throws ReflectionException
      */
     public function scheduleForDelete(EntityBase $entity): void
     {
-        if ($this->scheduledForDelete->contains($entity)) {
-            return;
-        }
-
         if (!$entity->__isPersisted()) {
             return;
         }
 
-        $this->scheduledForDelete->attach($entity);
-        $this->handleCascades($entity, CascadeType::Remove);
+        $this->deleteSchedule->schedule($entity);
+        $this->cascadeHandler->handle($entity, CascadeType::Remove);
     }
 
     /**
-     * @throws ReflectionException
+     * Commits all scheduled operations (insert, update, delete) to the database.
+     *
+     * @throws ReflectionException If reflection fails during execution.
      */
     public function commit(): void
     {
-        foreach ($this->scheduledForDelete as $entity) {
+        foreach ($this->deleteSchedule->getAll() as $entity) {
             $this->executeDelete($entity);
         }
 
-        foreach ($this->sortInsertEntitiesByDependency() as $entity) {
-            $this->insertExecutor->execute($entity);
+        foreach ($this->insertSchedule->getAll() as $entity) {
+            $this->executeInsert($entity);
         }
 
-        foreach ($this->scheduledForUpdate as $entity) {
+        foreach ($this->updateSchedule->getAll() as $entity) {
             $this->executeUpdate($entity);
         }
 
-        $this->clear();
-    }
-
-    private function clear(): void
-    {
-        $this->scheduledForInsert = new SplObjectStorage();
-        $this->scheduledForUpdate = new SplObjectStorage();
-        $this->scheduledForDelete = new SplObjectStorage();
+        $this->insertSchedule->clear();
+        $this->updateSchedule->clear();
+        $this->deleteSchedule->clear();
     }
 
     /**
-     * @throws ReflectionException
+     * Executes the insertion of an entity.
+     *
+     * @param EntityBase $entity The entity to be inserted.
+     * @throws ReflectionException If reflection fails during execution.
      */
     private function executeInsert(EntityBase $entity): void
     {
@@ -136,7 +136,10 @@ class UnitOfWork
     }
 
     /**
-     * @throws ReflectionException
+     * Executes the update of an entity.
+     *
+     * @param EntityBase $entity The entity to be updated.
+     * @throws ReflectionException If reflection fails during execution.
      */
     private function executeUpdate(EntityBase $entity): void
     {
@@ -144,57 +147,13 @@ class UnitOfWork
     }
 
     /**
-     * @throws ReflectionException
+     * Executes the deletion of an entity.
+     *
+     * @param EntityBase $entity The entity to be deleted.
+     * @throws ReflectionException If reflection fails during execution.
      */
     private function executeDelete(EntityBase $entity): void
     {
         $this->deleteExecutor->execute($entity);
-    }
-
-    /**
-     * @throws ReflectionException
-     */
-    private function handleCascades(EntityBase $entity, CascadeType $action): void
-    {
-        $this->cascadeHandler->handle($entity, $action);
-    }
-
-    private function sortInsertEntitiesByDependency(): array
-    {
-        $ordered = [];
-        $visited = [];
-
-        foreach ($this->scheduledForInsert as $entity) {
-            $this->visit($entity, $ordered, $visited);
-        }
-
-        return $ordered;
-    }
-
-    private function visit(EntityBase $entity, array &$ordered, array &$visited): void
-    {
-        $hash = spl_object_hash($entity);
-        if (isset($visited[$hash])) {
-            return;
-        }
-
-        $visited[$hash] = true;
-
-        $metadata = $this->metadataParser->parse($entity::class);
-        $reflection = $this->metadataParser->getReflectionCache();
-
-        foreach ($metadata->getRelations() as $property => $relationInfo) {
-            $related = $reflection->getValue($entity, $property);
-
-            if ($related instanceof \Closure) {
-                $related = $related();
-            }
-
-            if ($related instanceof EntityBase && $this->scheduledForInsert->contains($related)) {
-                $this->visit($related, $ordered, $visited);
-            }
-        }
-
-        $ordered[] = $entity;
     }
 }

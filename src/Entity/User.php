@@ -8,6 +8,8 @@ use ORM\Attributes\Entity;
 use ORM\Attributes\GeneratedValue;
 use ORM\Attributes\Id;
 use ORM\Attributes\JoinColumn;
+use ORM\Attributes\JoinTable;
+use ORM\Attributes\ManyToMany;
 use ORM\Attributes\OneToMany;
 use ORM\Attributes\OneToOne;
 use ORM\Attributes\Table;
@@ -47,9 +49,14 @@ class User extends EntityBase
     )]
     private Collection|Closure $posts;
 
+    #[ManyToMany(entity: Role::class)]
+    #[JoinTable(name: "user_roles", joinColumn: "user_id", inverseJoinColumn: "role_id")]
+    private Collection|Closure $roles;
+
     public function __construct()
     {
         $this->posts = new Collection();
+        $this->roles = new Collection();
     }
 
     public function getId(): int
@@ -107,6 +114,17 @@ class User extends EntityBase
         }
 
         return $this->posts;
+    }
+
+    public function getRoles(): Collection
+    {
+        return $this->roles;
+    }
+
+    public function addRole(Role $role): self
+    {
+        $this->roles->add($role);
+        return $this;
     }
 
     public function jsonSerialize(): mixed

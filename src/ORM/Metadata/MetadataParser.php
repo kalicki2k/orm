@@ -4,6 +4,7 @@ namespace ORM\Metadata;
 
 use InvalidArgumentException;
 use ORM\Attributes\Entity;
+use ORM\Attributes\ManyToMany;
 use ORM\Attributes\Table;
 use ORM\Cache\InMemoryMetadataCache;
 use ORM\Cache\InMemoryReflectionCache;
@@ -12,6 +13,7 @@ use ORM\Cache\ReflectionCache;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\AttributeHandler\ColumnAttributeHandler;
 use ORM\Metadata\AttributeHandler\IdAttributeHandler;
+use ORM\Metadata\AttributeHandler\ManyToManyAttributeHandler;
 use ORM\Metadata\AttributeHandler\ManyToOneAttributeHandler;
 use ORM\Metadata\AttributeHandler\MetadataAttributeHandler;
 use ORM\Metadata\AttributeHandler\OneToManyAttributeHandler;
@@ -33,6 +35,7 @@ class MetadataParser
             new OneToOneAttributeHandler($this),
             new OneToManyAttributeHandler(),
             new ManyToOneAttributeHandler($this),
+            new ManyToManyAttributeHandler(),
         ];
     }
 

@@ -3,6 +3,7 @@
 use Dotenv\Dotenv;
 use Entity\Post;
 use Entity\Profile;
+use Entity\Role;
 use Entity\User;
 use ORM\Cache\RedisMetadataCache;
 use ORM\Drivers\PDODriver;
@@ -166,3 +167,12 @@ echo "Post: " . $post->getTitle() . "\n";
 
 // Lazy Loading wird hier getriggert
 echo "Autor: " . $post->getUser()->getUsername() . "\n";
+//
+//$adminRole = new Role();
+//$adminRole->setName('ROLE_ADMIN');
+//
+//$user = $entityManager->findBy(User::class, 1);
+//$user->addRole($adminRole);
+//
+//$entityManager->persist($user);
+//$entityManager->flush();

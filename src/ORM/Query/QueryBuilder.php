@@ -12,6 +12,7 @@ use ORM\Query\Builder\DeleteBuilder;
 use ORM\Query\Builder\InsertBuilder;
 use ORM\Query\Builder\SelectBuilder;
 use ORM\Query\Builder\UpdateBuilder;
+use ORM\Query\Builder\WhereBuilder;
 use ORM\Query\Sql\DeleteSqlRenderer;
 use ORM\Query\Sql\InsertSqlRenderer;
 use ORM\Query\Sql\SelectSqlRenderer;
@@ -134,6 +135,18 @@ class QueryBuilder
         $this->queryContext->action = "delete";
         return $this;
     }
+
+//    public function where(Expression|array $criteria): self
+//    {
+//        [$whereClause, $params] = new WhereBuilder()
+//            ->build($this->queryContext->metadata, $this->queryContext, $criteria);
+//
+//        $this->queryContext->where = $whereClause;
+//        $this->queryContext->parameters = array_merge($this->queryContext->parameters, $params);
+//
+//        return $this;
+//    }
+
 
     public function where(array $whereConditions, array $parameters): self
     {

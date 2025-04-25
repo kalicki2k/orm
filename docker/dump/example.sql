@@ -26,3 +26,9 @@ CREATE TABLE posts (
        ON DELETE CASCADE
        ON UPDATE CASCADE
 );
+
+CREATE TABLE user_roles (
+    user_id INT NOT NULL,
+    role_id INT NOT NULL,
+    PRIMARY KEY (user_id, role_id)
+);

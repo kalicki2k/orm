@@ -9,7 +9,7 @@ use ORM\Entity\Type\FetchType;
 class ManyToMany
 {
     public function __construct(
-        public string $entity,                 // Ziel-Entity
+        public string $entity,
         public ?array $cascade = null,
         public FetchType $fetch = FetchType::Lazy
     ) {}

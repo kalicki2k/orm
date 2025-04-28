@@ -5,6 +5,7 @@ namespace ORM\Persistence;
 use Closure;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
+use ReflectionException;
 use SplObjectStorage;
 
 class InsertSchedule
@@ -45,6 +46,9 @@ class InsertSchedule
         $this->scheduledForInsert = new SplObjectStorage();
     }
 
+    /**
+     * @throws ReflectionException
+     */
     private function visit(EntityBase $entity, array &$ordered, array &$visited): void
     {
         $hash = spl_object_hash($entity);

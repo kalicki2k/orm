@@ -266,27 +266,51 @@ class EntityManager {
     }
 
     /**
-     * Finds and returns a single entity instance by primary key or complex criteria.
+     * Retrieves a single entity instance by primary key, simple criteria, or complex expressions.
      *
-     * Supports:
-     * - Scalar primary key lookup (e.g. 123)
-     * - Associative array criteria (e.g. ["email" => "foo@bar.com"])
-     * - Expression tree (via ExpressionBuilder)
+     * This method executes a SELECT query to fetch the first matching entity based on:
+     * - Scalar value: Treated as primary key lookup (e.g. findBy(User::class, 1)).
+     * - Associative array: Simple WHERE conditions (e.g. ['email' => 'foo@bar.com']).
+     * - Expression object: For advanced AND/OR logic using the Expression builder.
+     * - Null: Returns the first entity found (use with caution).
      *
-     * If the entity was already hydrated and cached (via EntityCache), it is returned directly.
-     * Otherwise, the method executes a SELECT and hydrates the entity from the first matching row.
+     * If no matching record is found, the method returns `null`.
      *
-     * Note: In case of EAGER OneToMany relations, only the *last* row is used to construct the base entity.
-     * Hydration strategies for collections are handled inside the EntityHydrator.
+     * For EAGER-loaded relations (e.g. OneToMany), additional rows are grouped and hydrated properly.
      *
-     * @param class-string<EntityBase> $entityName Fully-qualified class name of the entity (e.g. User::class).
-     * @param Expression|int|string|array|null $criteria Optional criteria or primary key value.
-     * @param array $options Optional query settings (e.g. joins, orderBy, limit).
+     * @param class-string<EntityBase> $entityName Fully-qualified entity class (e.g. User::class).
+     * @param Expression|int|string|array|null $criteria Optional filtering:
+     *        - Primary key (int|string)
+     *        - Associative array conditions
+     *        - Expression object
+     *        - Null for no filtering
+     * @param array $options Query options like:
+     *        - "joins" => array of relations to eager load
+     *        - "orderBy" => ["column" => "ASC|DESC"]
+     *        - "limit" => int
+     *        - "offset" => int
      *
-     * @return EntityBase|null Hydrated entity instance or null if no result was found.
+     * @return EntityBase|null The hydrated entity or null if no result.
      *
-     * @throws DateMalformedStringException If date/time conversion fails during hydration.
+     * @throws DateMalformedStringException If a date/time format is invalid during hydration.
      * @throws ReflectionException If metadata or reflection fails.
+     *
+     * @example // Find user by primary key
+     * $user = $entityManager->findBy(User::class, 5);
+     *
+     * @example // Find user by email
+     * $user = $entityManager->findBy(User::class, ["email" => "john@example.com"]);
+     *
+     * @example // Find active user with complex criteria and eager load profile
+     * $criteria = Expression::and()
+     *     ->andEq("user.status", "active")
+     *     ->orLike("user.email", "%@example.com");
+     *
+     * $user = $entityManager->findBy(
+     *     User::class,
+     *     $criteria,
+     *     ["joins" => ["profile"]]
+     * );
      */
     public function findBy(
         string $entityName,
@@ -314,18 +338,46 @@ class EntityManager {
     }
 
     /**
-     * Streams all entities of the given type using a generator.
+     * Streams all entities of a given type using a generator for efficient memory usage.
      *
-     * This method is useful for memory-efficient iteration over large datasets.
-     * All records from the table will be hydrated and yielded one-by-one.
+     * This method is ideal for processing large datasets, as it fetches and hydrates entities
+     * one by one without loading the entire result set into memory.
      *
-     * @param string $entityName The fully-qualified class name of the entity to stream.
-     * @param array $options Optional query options (e.g. joins, ordering, limits).
+     * Supports optional filtering, sorting, pagination, and eager loading of relations.
+     * Useful for batch processing, exports, or background jobs where performance matters.
      *
-     * @return Generator<EntityBase> A generator yielding hydrated entity instances.
+     * @param class-string<EntityBase> $entityName Fully-qualified entity class name (e.g. User::class).
+     * @param Expression|int|string|array|null $criteria Optional filtering conditions:
+     *        - Scalar (int|string): Lookup by primary key.
+     *        - Array: Simple WHERE conditions.
+     *        - Expression: Complex query logic via Expression builder.
+     *        - Null: Stream all records.
+     * @param array $options Query options:
+     *        - "joins"   => Relations to eager load (e.g. ["profile", "posts"])
+     *        - "orderBy" => ["column" => "ASC|DESC"]
+     *        - "limit"   => Max number of records
+     *        - "offset"  => Starting point for pagination
      *
-     * @throws ReflectionException
-     * @throws DateMalformedStringException
+     * @return Generator<EntityBase> Yields hydrated entity instances one at a time.
+     *
+     * @throws ReflectionException If metadata or reflection fails.
+     * @throws DateMalformedStringException If date/time conversion fails during hydration.
+     *
+     * @example // Stream all users
+     * foreach ($entityManager->streamAll(User::class) as $user) {
+     *     echo $user->getUsername();
+     * }
+     *
+     * @example // Stream active users with eager-loaded profiles
+     * $criteria = Expression::eq("user.status", "active");
+     * foreach ($entityManager->streamAll(User::class, $criteria, ["joins" => ["profile"]]) as $user) {
+     *     echo $user->getProfile()->getBio();
+     * }
+     *
+     * @example // Stream users in batches of 100, ordered by ID
+     * foreach ($entityManager->streamAll(User::class, null, ["orderBy" => ["user.id" => "ASC"], "limit" => 100]) as $user) {
+     *     // Process user
+     * }
      */
     public function streamAll(
         string $entityName,
@@ -337,22 +389,56 @@ class EntityManager {
     }
 
     /**
-     * Streams entities from the database matching the given criteria using a generator.
+     * Streams entities matching the given criteria using a memory-efficient generator.
      *
-     * This method is ideal for processing large result sets efficiently without loading all entities into memory.
-     * Each matching row is hydrated and yielded as an entity instance.
+     * This method is perfect for handling large datasets where you need to filter specific records
+     * without loading the entire result set into memory. Entities are fetched, hydrated, and yielded
+     * one by one, making it ideal for batch processing, data exports, or background tasks.
      *
-     * @param string $entityName The fully-qualified class name of the entity.
-     * @param Expression|int|string|array|null $criteria Optional filtering criteria.
-     *        - Scalar (int|string): treated as lookup by primary key.
-     *        - Array: treated as key-value conditions (e.g. ["type" => "admin"]).
-     *        - Expression: for advanced query logic (AND/OR groups etc.).
-     * @param array $options Optional query options (e.g. joins, ordering, limits).
+     * Supports flexible filtering via:
+     * - Scalar: Lookup by primary key.
+     * - Array: Simple key-value WHERE conditions.
+     * - Expression: Complex queries using the Expression builder.
+     * - Null: Streams all records without filtering.
      *
-     * @return Generator<EntityBase> A generator yielding hydrated entity instances.
+     * You can also define eager loading of relations, sorting, pagination, and distinct queries through options.
      *
-     * @throws ReflectionException
-     * @throws DateMalformedStringException
+     * @param class-string<EntityBase> $entityName Fully-qualified class name of the entity (e.g. User::class).
+     * @param Expression|int|string|array|null $criteria Filtering conditions to apply:
+     *        - Scalar (int|string): Lookup by primary key.
+     *        - Array: ["status" => "active"]
+     *        - Expression: Complex WHERE clauses.
+     *        - Null: No filtering.
+     * @param array $options Additional query options:
+     *        - "joins"   => ["relation1", "relation2"] // Eager load relations
+     *        - "orderBy" => ["column" => "ASC|DESC"]
+     *        - "limit"   => int
+     *        - "offset"  => int
+     *        - "distinct" => bool
+     *
+     * @return Generator<EntityBase> Yields each hydrated entity instance individually.
+     *
+     * @throws ReflectionException If metadata parsing or reflection fails.
+     * @throws DateMalformedStringException If date/time fields cannot be parsed correctly.
+     *
+     * @example // Stream a user by primary key
+     * foreach ($entityManager->streamBy(User::class, 5) as $user) {
+     *     echo $user->getEmail();
+     * }
+     *
+     * @example // Stream users with status 'active'
+     * foreach ($entityManager->streamBy(User::class, ["status" => "active"]) as $user) {
+     *     echo $user->getUsername();
+     * }
+     *
+     * @example // Stream users with complex condition and eager-loaded posts
+     * $criteria = Expression::and()
+     *     ->andEq("user.status", "active")
+     *     ->andGte("user.id", 100);
+     *
+     * foreach ($entityManager->streamBy(User::class, $criteria, ["joins" => ["posts"], "limit" => 50]) as $user) {
+     *     echo count($user->getPosts());
+     * }
      */
     public function streamBy(
         string $entityName,
@@ -364,21 +450,58 @@ class EntityManager {
     }
 
     /**
-     * Counts the number of rows matching the given criteria for the specified entity.
+     * Counts the number of entities matching the given criteria.
      *
-     * This is equivalent to running `SELECT COUNT(*)` on the corresponding entity table,
-     * with optional filtering and SQL options (e.g. joins, where conditions).
+     * This method performs a `SELECT COUNT(...)` query on the entity's table, applying optional filters,
+     * joins, and other SQL options. It is ideal for quickly determining the number of records
+     * without retrieving full entity data.
      *
-     * @param string $entityName The fully-qualified class name of the entity.
-     * @param Expression|int|string|array|null $criteria Optional filtering criteria.
-     *        - Scalar (int|string): treated as lookup by primary key.
-     *        - Array: treated as key-value conditions (e.g. ["status" => "active"]).
-     *        - Expression: allows advanced expressions via ExpressionBuilder.
-     * @param array $options Optional additional options (e.g. joins, groupBy).
+     * Supported criteria formats:
+     * - Scalar (int|string): Lookup by primary key.
+     * - Array: Simple key-value WHERE conditions (e.g. ["status" => "active"]).
+     * - Expression: Complex conditions using the Expression builder.
+     * - Null: Counts all records in the table.
      *
-     * @return int The number of rows matching the query.
+     * Supports additional query customization via options like joins (for EAGER relations), grouping,
+     * ordering (where applicable), limits, and distinct counts.
      *
-     * @throws ReflectionException If metadata resolution fails.
+     * ⚠️ Note: Using joins can impact the count result depending on SQL behavior (e.g. row multiplication).
+     * Use `distinct` or `groupBy` wisely when counting with joins.
+     *
+     * @param class-string<EntityBase> $entityName Fully-qualified class name of the entity (e.g. User::class).
+     * @param Expression|int|string|array|null $criteria Optional filtering:
+     *        - Scalar: Primary key lookup.
+     *        - Array: Simple conditions.
+     *        - Expression: Advanced logic.
+     *        - Null: No filtering.
+     * @param array $options Additional options:
+     *        - "joins"    => ["relation1", "relation2"]  // Eager loading (may affect count)
+     *        - "groupBy"  => ["column1", "column2"]
+     *        - "distinct" => true
+     *
+     * @return int The total number of matching records.
+     *
+     * @throws ReflectionException If entity metadata parsing fails.
+     *
+     * @example // Count all users
+     * $totalUsers = $entityManager->countBy(User::class);
+     *
+     * @example // Count users with status 'active'
+     * $activeUsers = $entityManager->countBy(User::class, ["status" => "active"]);
+     *
+     * @example // Count users with complex criteria
+     * $criteria = Expression::and()
+     *     ->andEq("user.status", "active")
+     *     ->orLike("user.email", "%@example.com");
+     *
+     * $count = $entityManager->countBy(User::class, $criteria);
+     *
+     * @example // Count distinct users with posts (be careful with joins)
+     * $count = $entityManager->countBy(
+     *     User::class,
+     *     null,
+     *     ["joins" => ["posts"], "distinct" => true]
+     * );
      */
     public function countBy(
         string $entityName,
@@ -405,16 +528,46 @@ class EntityManager {
     }
 
     /**
-     * Flushes all pending changes to the database.
+     * Commits all pending entity changes to the database.
      *
-     * Executes all scheduled insert, update, and delete operations in the correct order,
-     * respecting cascade rules and entity dependencies.
+     * The `flush()` method synchronizes the in-memory state of managed entities with the database.
+     * It processes all scheduled operations (insert, update, delete) in the correct order, ensuring
+     * data integrity, respecting cascading rules, and handling dependencies between entities.
      *
-     * - Inserts are sorted by dependency (e.g. children wait for parents).
-     * - Cascade operations (Persist, Remove) are honored.
-     * - Tracks entity state via UnitOfWork and resets after flush.
+     * **Key Features:**
+     * - Executes batched **INSERT**, **UPDATE**, and **DELETE** statements.
+     * - Respects **CascadeType** rules (e.g. Persist, Remove).
+     * - Orders operations to satisfy foreign key constraints (e.g. parents before children on insert, reverse on delete).
+     * - Clears the UnitOfWork after successful execution.
      *
-     * @throws ReflectionException If metadata reflection fails during flush.
+     * Use `flush()` after calling `persist()`, `update()`, or `delete()` to apply changes.
+     * Multiple entity operations are grouped for optimal performance.
+     *
+     * ⚠️ **Note:**
+     * - `flush()` only affects entities tracked by the **UnitOfWork**.
+     * - Changes outside of ORM control (e.g. raw SQL) are not considered.
+     * - It's recommended to batch multiple operations before flushing to reduce database load.
+     *
+     * @throws ReflectionException If reflection or metadata resolution fails during processing.
+     *
+     * @example // Persist a new user
+     * $user = new User();
+     * $user->setUsername("john_doe")->setEmail("john@example.com");
+     *
+     * $entityManager->persist($user);
+     * $entityManager->flush();
+     *
+     * @example // Update and delete in a single flush
+     * $user->setEmail("new@example.com");
+     * $entityManager->update($user);
+     * $entityManager->delete($oldUser);
+     * $entityManager->flush();
+     *
+     * @example // Batch insert
+     * foreach ($users as $user) {
+     *     $entityManager->persist($user);
+     * }
+     * $entityManager->flush();
      */
     public function flush(): void
     {
@@ -444,16 +597,24 @@ class EntityManager {
     }
 
     /**
-     * Normalizes different input formats for criteria into a consistent array or Expression.
+     * Normalizes different criteria formats into a unified Expression for query building.
      *
-     * Accepts primary key scalar (e.g. ID), associative arrays (e.g. ["email" => "..."]),
-     * or Expression objects for advanced conditions. This ensures that `findBy()`, `findAll()`, etc.
-     * can be called flexibly while still being resolved to a valid internal query structure.
+     * This method accepts flexible input formats for filtering conditions and converts them
+     * into a standardized {@see Expression} object, which can be safely used in WHERE clauses.
      *
-     * @param Expression|int|string|array|null $criteria The raw criteria input from the user.
-     * @param MetadataEntity $metadata Metadata used to determine the primary key for scalar lookups.
+     * Supported input types:
+     * - **null**: No WHERE clause will be applied.
+     * - **Scalar (int|string)**: Treated as a primary key lookup (e.g., `alias.id = :id`).
+     * - **Associative array**: Each key-value pair becomes an AND condition (e.g., `status = :status`).
+     * - **Expression**: Returns the given Expression as-is for advanced conditions.
      *
-     * @return Expression|array The normalized criteria ready for query building.
+     * All column names are automatically prefixed with the entity alias to ensure correct SQL generation,
+     * especially when dealing with joins.
+     *
+     * @param Expression|int|string|array|null $criteria The user-defined filtering conditions.
+     * @param MetadataEntity $metadata Entity metadata providing alias and primary key context.
+     *
+     * @return Expression|null The normalized Expression for WHERE clauses, or null if no criteria is provided.
      */
     private function normalizeCriteria(Expression|int|string|array|null $criteria, MetadataEntity $metadata): ?Expression
     {
@@ -465,13 +626,6 @@ class EntityManager {
             return null;
         }
 
-        if (is_scalar($criteria)) {
-            return Expression::eq(
-                $metadata->getAlias() . "." . $metadata->getPrimaryKey(),
-                $criteria
-            );
-        }
-
         if (is_array($criteria)) {
             $expr = Expression::and();
             foreach ($criteria as $col => $value) {
@@ -480,18 +634,27 @@ class EntityManager {
             return $expr;
         }
 
-        return [$metadata->getPrimaryKey() => $criteria];
+        return Expression::eq(
+            $metadata->getAlias() . "." . $metadata->getPrimaryKey(),
+            $criteria
+        );
     }
 
     /**
-     * Handles one or multiple entities using the provided callback.
+     * Applies a callback to one or multiple entities in a safe and consistent manner.
      *
-     * @param EntityBase|array<EntityBase> $entity The entity or list of entities to handle.
-     * @param callable $callback The callback to execute for each entity.
+     * This utility method ensures that the provided input is either a single {@see EntityBase}
+     * instance or an array of such instances. It then executes the given callback for each entity.
      *
-     * @return $this Fluent interface for method chaining.
+     * Useful for internal operations like scheduling entities for persistence, update, or deletion
+     * within the {@see UnitOfWork}, while enforcing strict type safety.
      *
-     * @throws InvalidArgumentException If array contains non-EntityBase elements.
+     * @param EntityBase|array<EntityBase> $entity Single entity or an array of entities to process.
+     * @param callable(EntityBase): void $callback The callback to apply to each entity.
+     *
+     * @return $this Fluent interface to allow method chaining.
+     *
+     * @throws InvalidArgumentException If the input is not an EntityBase instance or an array containing only EntityBase instances.
      */
     private function handleEntities(EntityBase|array $entity, callable $callback): self
     {
@@ -536,21 +699,31 @@ class EntityManager {
     }
 
     /**
-     * Internal generator used by `streamAll()` and `streamBy()` to yield entities from the database.
+     * Executes a streaming query to fetch entities matching the given criteria and options.
      *
-     * Applies optional filtering (`$criteria`) and query configuration (`$options`) while streaming
-     * results row-by-row. Uses the identity map (`EntityCache`) to avoid hydrating duplicates.
+     * This internal method builds a dynamic SELECT query based on entity metadata, applies
+     * filtering conditions, joins, and other SQL options, and streams the result set using a generator.
+     *
+     * Designed for memory-efficient processing of large datasets by yielding entities one at a time.
+     * It handles grouping of rows for proper hydration when joins are involved and avoids duplication
+     * through identity mapping.
      *
      * @template T of EntityBase
      *
-     * @param class-string<T> $entityName Fully qualified class name of the entity.
-     * @param Expression|int|string|array|null $criteria Filtering conditions (WHERE).
-     * @param array $options Optional query options (joins, limit, orderBy, etc.).
+     * @param class-string<T> $entityName  Fully-qualified class name of the target entity.
+     * @param Expression|int|string|array|null $criteria  Filtering conditions for the WHERE clause.
+     *        Supports primary key lookup, associative arrays, or complex expressions.
+     * @param array $options  Additional query options such as:
+     *                        - "joins": array of relations to eager load
+     *                        - "orderBy": sorting instructions
+     *                        - "limit": maximum number of results
+     *                        - "offset": starting point for pagination
+     *                        - "distinct": boolean flag for DISTINCT queries
      *
-     * @return Generator<T> A generator yielding hydrated entity instances.
+     * @return Generator<T> A generator yielding hydrated entity instances sequentially.
      *
-     * @throws ReflectionException If metadata or reflection fails.
-     * @throws DateMalformedStringException
+     * @throws ReflectionException If metadata parsing or reflection fails.
+     * @throws DateMalformedStringException If date/time fields cannot be parsed during hydration.
      */
     private function streamInternal(
         string $entityName,
@@ -576,9 +749,26 @@ class EntityManager {
     }
 
     /**
-     * @throws DateMalformedStringException
-     * @throws ReflectionException
+     * Groups SQL result rows by primary key and hydrates entities accordingly.
+     *
+     * This method processes a flat SQL result set (including possible JOINs) and groups
+     * rows that belong to the same entity based on the primary key column.
+     * For each group, it triggers the hydration process to reconstruct fully populated entity instances,
+     * including eager-loaded relations.
+     *
+     * Returns a generator to yield each hydrated entity, ensuring efficient memory usage
+     * even with large datasets.
+     *
+     * @param Statement $statement The executed database statement providing fetched rows.
+     * @param string $primaryKeyColumn The alias of the primary key column used for grouping.
+     * @param MetadataEntity $metadata Metadata describing the structure of the entity.
+     *
+     * @return Generator<EntityBase> A generator yielding hydrated entities one by one.
+     *
+     * @throws DateMalformedStringException If date/time fields in the data cannot be parsed correctly.
+     * @throws ReflectionException If reflection operations fail during hydration.
      */
+
     private function groupAndHydrateEntities(Statement $statement, string $primaryKeyColumn, MetadataEntity $metadata): Generator
     {
         $currentId = null;
@@ -602,8 +792,22 @@ class EntityManager {
     }
 
     /**
-     * @throws DateMalformedStringException
-     * @throws ReflectionException
+     * Hydrates a single entity instance from a grouped set of SQL result rows.
+     *
+     * This method takes a group of rows that represent one entity (including its eager-loaded relations),
+     * hydrates the base entity from the first row, and processes remaining rows to populate
+     * collection-based or repeated relation data (e.g. OneToMany).
+     *
+     * It ensures that even in JOIN-heavy queries, where an entity might appear multiple times
+     * due to related records, only one consistent entity instance is returned with all relations hydrated.
+     *
+     * @param array $group The grouped SQL rows belonging to a single entity instance.
+     * @param MetadataEntity $metadata Metadata describing the entity's structure and relations.
+     *
+     * @return EntityBase The fully hydrated entity with its relations.
+     *
+     * @throws DateMalformedStringException If date or datetime fields contain invalid formats during hydration.
+     * @throws ReflectionException If reflection fails while setting entity properties.
      */
     private function hydrateGroupedEntity(array $group, MetadataEntity $metadata): EntityBase
     {
@@ -616,6 +820,24 @@ class EntityManager {
         return $entity;
     }
 
+    /**
+     * Applies common SQL query options to the QueryBuilder instance.
+     *
+     * This method processes optional query modifiers such as DISTINCT, ORDER BY, LIMIT, and OFFSET
+     * from the provided options array and applies them to the given QueryBuilder.
+     * It standardizes how these options are handled across all query-building operations.
+     *
+     * Supported options:
+     * - **distinct**: (bool) Adds DISTINCT to the SELECT clause.
+     * - **orderBy**: (string|array) Defines sorting order. Accepts column or [column => direction].
+     * - **limit**: (int) Restricts the number of returned rows.
+     * - **offset**: (int) Skips a number of rows before starting to return results.
+     *
+     * @param QueryBuilder $queryBuilder The query builder instance to apply options to.
+     * @param array $options The associative array of query options.
+     *
+     * @return void
+     */
     private function applyOptions(QueryBuilder $queryBuilder, array $options): void
     {
         if (isset($options["distinct"])) {
@@ -635,6 +857,31 @@ class EntityManager {
         }
     }
 
+    /**
+     * Dynamically applies SELECT columns and JOIN clauses based on entity metadata and query options.
+     *
+     * This method ensures that all necessary columns from the base entity and its relations
+     * are included in the SELECT statement. It also constructs the appropriate SQL JOINs
+     * for relations marked with `FetchType::Eager`. Relations configured as `FetchType::Lazy`
+     * are ignored to optimize query performance.
+     *
+     * Features:
+     * - Adds aliased columns for the base entity.
+     * - Processes relations from the "joins" option:
+     *    - Supports OneToOne, ManyToOne, and OneToMany relationships.
+     *    - Automatically resolves join conditions based on metadata (JoinColumn, mappedBy, etc.).
+     *    - Skips joins for relations using Lazy loading.
+     * - Delegates JOIN and column handling to helper methods (`applyJoin`, `applySelectColumns`).
+     *
+     * @param QueryBuilder $queryBuilder The query builder instance to modify.
+     * @param MetadataEntity $metadata Metadata of the root entity being queried.
+     * @param array $options Query options, specifically:
+     *                       - "joins" => array of relation names to include.
+     *
+     * @return void
+     *
+     * @throws ReflectionException If relation metadata resolution fails.
+     */
     private function applyJoinsAndColumns(QueryBuilder $queryBuilder, MetadataEntity $metadata, array $options): void
     {
         $this->applySelectColumns($queryBuilder, $metadata, $metadata->getAlias());
@@ -694,6 +941,26 @@ class EntityManager {
         }
     }
 
+    /**
+     * Appends all columns of the given entity to the SELECT clause with proper aliasing.
+     *
+     * This method iterates over the entity's column definitions from metadata and adds them
+     * to the QueryBuilder's SELECT statement. Each column is prefixed with the provided table alias
+     * and assigned a unique SQL alias in the format: `alias_columnName`.
+     *
+     * This ensures:
+     * - Clear disambiguation of columns when dealing with JOINs.
+     * - Consistent mapping for hydration by using predictable aliases.
+     *
+     * Example output:
+     * SELECT user.id AS user_id, user.name AS user_name ...
+     *
+     * @param QueryBuilder $queryBuilder The QueryBuilder instance being constructed.
+     * @param MetadataEntity $metadata Metadata containing column definitions.
+     * @param string $alias The table alias to prefix each column with.
+     *
+     * @return void
+     */
     private function applySelectColumns(QueryBuilder $queryBuilder, MetadataEntity $metadata, string $alias): void
     {
         foreach ($metadata->getColumns() as $column) {
@@ -703,7 +970,35 @@ class EntityManager {
         }
     }
 
-    private function applyJoin(QueryBuilder $queryBuilder, string $sourceAlias, string $targetAlias, string $sourceColumn, string $targetColumn, string $targetTable): void
+    /**
+     * Adds a LEFT JOIN clause to the QueryBuilder for the specified relation.
+     *
+     * This helper method constructs a standardized SQL LEFT JOIN between a source table alias
+     * and a target table, based on the provided join columns. It abstracts the repetitive join logic,
+     * ensuring consistent formatting across all relation-based queries.
+     *
+     * The ON condition is generated as:
+     *   `sourceAlias.sourceColumn = targetAlias.targetColumn`
+     *
+     * Example output:
+     *   LEFT JOIN `profiles` AS `user__profile` ON user.profile_id = user__profile.id
+     *
+     * @param QueryBuilder $queryBuilder The QueryBuilder instance to append the JOIN to.
+     * @param string $sourceAlias Alias of the source (owning) entity table.
+     * @param string $targetAlias Alias for the target (related) entity table.
+     * @param string $sourceColumn The column in the source table used for joining.
+     * @param string $targetColumn The referenced column in the target table.
+     * @param string $targetTable  The physical name of the target database table.
+     *
+     * @return void
+     */private function applyJoin(
+        QueryBuilder $queryBuilder,
+        string $sourceAlias,
+        string $targetAlias,
+        string $sourceColumn,
+        string $targetColumn,
+        string $targetTable
+    ): void
     {
         $queryBuilder->leftJoin(
             $targetTable,
@@ -718,10 +1013,29 @@ class EntityManager {
         );
     }
 
-
-
     /**
-     * @throws ReflectionException
+     * Builds a dynamic SELECT query based on entity metadata, criteria, and options.
+     *
+     * This method prepares a fully configured QueryBuilder instance for SELECT operations.
+     * It automatically applies table aliases, selects all relevant columns, handles JOINs
+     * for eager-loaded relations, applies WHERE conditions, and respects additional options
+     * like ordering, limits, offsets, and distinct selections.
+     *
+     * Primär genutzt von Methoden wie `findAll()`, `findBy()`, `streamAll()` und `streamBy()`
+     * zur einheitlichen Generierung von SELECT-Statements.
+     *
+     * @param MetadataEntity $metadata The metadata of the root entity defining table, columns, and relations.
+     * @param Expression|int|string|array|null $criteria Optional filtering conditions for the WHERE clause.
+     * @param array $options Additional query options:
+     *                       - "joins" => array of relations to eagerly load
+     *                       - "orderBy" => array specifying sort order
+     *                       - "limit" => int to restrict number of results
+     *                       - "offset" => int for pagination
+     *                       - "distinct" => bool to enforce DISTINCT selection
+     *
+     * @return QueryBuilder A fully prepared QueryBuilder instance ready for execution.
+     *
+     * @throws ReflectionException If relation metadata resolution fails during JOIN construction.
      */
     private function buildSelectQuery(
         MetadataEntity $metadata,
@@ -742,5 +1056,4 @@ class EntityManager {
 
         return $queryBuilder;
     }
-
 }

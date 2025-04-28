@@ -30,7 +30,7 @@ class Post extends EntityBase
 
     #[ManyToOne(entity: User::class, fetch: FetchType::Eager)]
     #[JoinColumn(name: "user_id", referencedColumn: "id", nullable: false)]
-    private User|Closure $user;
+    private User|Closure|null $user = null;
 
     /**
      * @return int
@@ -80,7 +80,7 @@ class Post extends EntityBase
     /**
      * @return User
      */
-    public function getUser(): User
+    public function getUser(): ?User
     {
         if ($this->user instanceof Closure) {
             $this->user = ($this->user)();

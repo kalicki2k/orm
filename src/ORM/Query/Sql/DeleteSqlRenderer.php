@@ -12,12 +12,11 @@ final class DeleteSqlRenderer implements SqlRenderer
         $sql = "DELETE FROM $queryContext->table";
 
         if (!empty($queryContext->where)) {
-            $whereParts = [];
-            foreach ($queryContext->where as $key => $value) {
-                $whereParts[] = "$key = $value";
-            }
+            [$whereSql, $parameters] = $queryContext->where->compile();
 
-            $sql .= " WHERE " . implode(" AND ", $whereParts);
+            $sql .= " WHERE $whereSql";
+
+            $queryContext->parameters = [...$queryContext->parameters, ...$parameters];
         }
 
         return $sql;

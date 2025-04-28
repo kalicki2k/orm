@@ -3,6 +3,7 @@
 namespace ORM\Query\Sql;
 
 use ORM\Drivers\DatabaseDriver;
+use ORM\Query\Expression;
 use ORM\Query\QueryContext;
 
 
@@ -17,55 +18,70 @@ final class SelectSqlRenderer implements SqlRenderer
      */
     public function render(QueryContext $queryContext, DatabaseDriver $databaseDriver): string
     {
-        $sql = 'SELECT';
+        $sqlParts = [];
 
-        // DISTINCT
+        // SELECT + DISTINCT
+        $selectClause = "SELECT";
         if ($queryContext->distinct) {
-            $sql .= ' DISTINCT';
+            $selectClause .= " DISTINCT";
         }
 
-        // COLUMNS
-        $sql .= ' ' . implode(', ', $queryContext->columns);
-        $sql .= " FROM {$queryContext->table}";
+        $selectClause .= " " . implode(", ", $queryContext->columns);
+        $sqlParts[] = $selectClause;
+
+        // FROM
+        $fromClause = $databaseDriver->quoteIdentifier($queryContext->table);
+
+        if (!empty($queryContext->alias)) {
+            $fromClause .= " AS " . $databaseDriver->quoteIdentifier($queryContext->alias);
+        }
+
+        $sqlParts[] = "FROM " . $fromClause;
 
         // JOINS
         foreach ($queryContext->joins as $join) {
-            $sql .= " {$join['type']} JOIN {$join['table']} AS {$join['alias']} ON {$join['on']}";
+            $sqlParts[] = sprintf(
+                "%s JOIN %s AS %s ON %s",
+                $join["type"],
+                $databaseDriver->quoteIdentifier($join["table"]),
+                $databaseDriver->quoteIdentifier($join["alias"]),
+                preg_replace_callback("/\b(\w+)\.(\w+)\b/", function ($matches) use ($databaseDriver) {
+                    return $databaseDriver->quoteIdentifier($matches[1]) . "." . $databaseDriver->quoteIdentifier($matches[2]);
+                }, $join["on"])
+            );
         }
 
         // WHERE
-        if (!empty($queryContext->where)) {
-            $where = [];
-            foreach ($queryContext->where as $col => $param) {
-                $where[] = is_int($col) ? $param : "$col = $param";
-            }
-            $sql .= ' WHERE ' . implode(' AND ', $where);
+        if ($queryContext->where instanceof Expression) {
+            [$whereSql, $params] = $queryContext->where->compile();
+            $sqlParts[] = "WHERE " . $whereSql;
+            $queryContext->parameters = array_merge($queryContext->parameters, $params);
         }
 
         // GROUP BY
         if (!empty($queryContext->groupBy)) {
-            $sql .= ' GROUP BY ' . implode(', ', array_map([$databaseDriver, 'quoteIdentifier'], $queryContext->groupBy));
+            $groupBy = implode(", ", array_map([$databaseDriver, "quoteIdentifier"], $queryContext->groupBy));
+            $sqlParts[] = "GROUP BY " . $groupBy;
         }
 
         // ORDER BY
         if (!empty($queryContext->orderBy)) {
-            $order = [];
+            $orders = [];
             foreach ($queryContext->orderBy as $col => $dir) {
-                $order[] = $databaseDriver->quoteIdentifier($col) . ' ' . strtoupper($dir);
+                $orders[] = $databaseDriver->quoteIdentifier($col) . " " . strtoupper($dir);
             }
-            $sql .= ' ORDER BY ' . implode(', ', $order);
+            $sqlParts[] = "ORDER BY " . implode(", ", $orders);
         }
 
-        // LIMIT
+        // LIMIT & OFFSET
         if ($queryContext->limit !== null) {
-            $sql .= ' LIMIT ' . (int) $queryContext->limit;
+            $sqlParts[] = "LIMIT " . (int) $queryContext->limit;
         }
 
-        // OFFSET
         if ($queryContext->offset !== null) {
-            $sql .= ' OFFSET ' . (int) $queryContext->offset;
+            $sqlParts[] = "OFFSET " . (int) $queryContext->offset;
         }
 
-        return $sql;
+        return implode(" ", $sqlParts);
     }
 }

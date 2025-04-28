@@ -24,15 +24,14 @@ final readonly class InsertExecutor
     {
         $metadata = $this->metadataParser->parse($entity::class);
         $data = $this->metadataParser->extract($entity, excludePrimaryKey: true);
-
         $lastInsertId = new QueryBuilder($this->databaseDriver, $this->logger)
             ->insert()
-            ->fromMetadata($metadata, null,  $data)
+            ->table($metadata->getTable())
+            ->values($data)
             ->execute();
 
         if ($metadata->isPrimaryKeyGenerated()) {
             $primaryKey = $metadata->getPrimaryKey();
-
             $reflection = $this->metadataParser->getReflectionCache();
             $reflection->getProperty($entity, $primaryKey)->setValue($entity, $lastInsertId);
         }

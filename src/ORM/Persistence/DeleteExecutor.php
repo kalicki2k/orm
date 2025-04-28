@@ -5,6 +5,7 @@ namespace ORM\Persistence;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
@@ -26,17 +27,17 @@ final readonly class DeleteExecutor
     public function execute(EntityBase $entity): void
     {
         $metadata = $this->metadataParser->parse($entity::class);
-        $data = $this->metadataParser->extract($entity);
-        $primaryKeyName = $metadata->getPrimaryKey();
-        $id = $data[$primaryKeyName] ?? null;
+        $primaryKey = $metadata->getPrimaryKey();
+        $primaryKeyValue = $this->metadataParser->extract($entity)[$primaryKey] ?? null;
 
-        if ($id === null) {
+        if ($primaryKeyValue === null) {
             throw new RuntimeException("Cannot delete entity without identifier.");
         }
 
         new QueryBuilder($this->databaseDriver, $this->logger)
             ->delete()
-            ->fromMetadata($metadata, null, [], [$primaryKeyName => $id])
+            ->table($metadata->getTable())
+            ->where(Expression::eq($primaryKey, $primaryKeyValue))
             ->execute();
     }
 }

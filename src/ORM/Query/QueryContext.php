@@ -52,10 +52,10 @@ final class QueryContext
     /**
      * WHERE conditions with quoted keys.
      *
-     * @example ["`u`.`id`" => ":id"]
-     * @var array<string, string>
+     * @example Expression::eq("id", 1)...<
+     * @var Expression|null
      */
-    public array $where = [];
+    public ?Expression $where = null;
 
     /**
      * JOIN definitions with quoted ON conditions.

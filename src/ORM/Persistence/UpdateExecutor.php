@@ -2,9 +2,11 @@
 
 namespace ORM\Persistence;
 
+use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
+use ORM\Query\Expression;
 use ORM\Query\QueryBuilder;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
@@ -26,10 +28,19 @@ final readonly class UpdateExecutor
     {
         $metadata = $this->metadataParser->parse($entity::class);
         $data = $this->metadataParser->extract($entity);
+        $primaryKey = $metadata->getPrimaryKey();
+        $primaryKeyValue = $data[$primaryKey] ?? null;
+
+        if ($primaryKeyValue === null) {
+            throw new InvalidArgumentException("Missing primary key value for update");
+        }
+
 
         new QueryBuilder($this->databaseDriver, $this->logger)
             ->update()
-            ->fromMetadata($metadata, null, $data)
+            ->table($metadata->getTable())
+            ->values($data)
+            ->where(Expression::eq($primaryKey, $primaryKeyValue))
             ->execute();
     }
 }

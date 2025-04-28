@@ -50,8 +50,8 @@ final readonly class LazyOneToManyHydrator implements RelationHydrator
      */
     public function supports(array $relation): bool
     {
-        return $relation['relation'] instanceof OneToMany
-            && $relation['relation']->fetch === FetchType::Lazy;
+        return $relation["relation"] instanceof OneToMany
+            && $relation["relation"]->fetch === FetchType::Lazy;
     }
 
     /**
@@ -82,8 +82,8 @@ final readonly class LazyOneToManyHydrator implements RelationHydrator
         array $relation,
         array $row
     ): Closure {
-        $targetEntity = $relation['relation']->entity;
-        $mappedBy = $relation['relation']->mappedBy;
+        $targetEntity = $relation["relation"]->entity;
+        $mappedBy = $relation["relation"]->mappedBy;
 
         return function () use ($parentMetadata, $targetEntity, $mappedBy, $row) {
             $id = $row["{$parentMetadata->getAlias()}_{$parentMetadata->getPrimaryKey()}"] ?? null;
@@ -93,7 +93,7 @@ final readonly class LazyOneToManyHydrator implements RelationHydrator
             }
 
             $targetMetadata = $this->entityManager->getMetadata($targetEntity);
-            $fkColumnName = $targetMetadata->getRelations()[$mappedBy]['joinColumn']->name;
+            $fkColumnName = $targetMetadata->getRelations()[$mappedBy]["joinColumn"]->name;
 
             return $this->entityManager->findAll($targetEntity, [$fkColumnName => $id]);
         };

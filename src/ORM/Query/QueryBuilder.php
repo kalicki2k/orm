@@ -6,12 +6,6 @@ use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Drivers\Statement;
 use ORM\Logger\LogHelper;
-use ORM\Metadata\MetadataEntity;
-use ORM\Query\Builder\CountBuilder;
-use ORM\Query\Builder\DeleteBuilder;
-use ORM\Query\Builder\InsertBuilder;
-use ORM\Query\Builder\SelectBuilder;
-use ORM\Query\Builder\UpdateBuilder;
 use ORM\Query\Sql\DeleteSqlRenderer;
 use ORM\Query\Sql\InsertSqlRenderer;
 use ORM\Query\Sql\SelectSqlRenderer;
@@ -27,11 +21,6 @@ class QueryBuilder
     public function __construct(
         private readonly DatabaseDriver $databaseDriver,
         private readonly ?LoggerInterface $logger = null,
-        private readonly CountBuilder $countBuilder = new CountBuilder(),
-        private readonly SelectBuilder $selectBuilder = new SelectBuilder(),
-        private readonly InsertBuilder $insertBuilder = new InsertBuilder(),
-        private readonly UpdateBuilder $updateBuilder = new UpdateBuilder(),
-        private readonly DeleteBuilder $deleteBuilder = new DeleteBuilder(),
     ) {
         $this->queryContext = new QueryContext();
     }
@@ -52,66 +41,22 @@ class QueryBuilder
         };
     }
 
-    public function fromMetadata(
-        MetadataEntity $metadata,
-        ?callable $resolveMetadata = null,
-        array $values = [],
-        Expression|array|null $criteria = null,
-        array $options = [],
-    ): self
-    {
-        $this->table($metadata->getTable(), $metadata->getAlias());
-
-        match ($this->queryContext->action) {
-            "select" => $this->selectBuilder->apply($this, $metadata, $resolveMetadata, $criteria, $options),
-            "count"  => $this->countBuilder->apply($this, $metadata, $criteria, $options),
-            "insert" => $this->insertBuilder->apply($this, $metadata, $values),
-            "update" => $this->updateBuilder->apply($this, $metadata, $values),
-            "delete" => $this->deleteBuilder->apply($this, $metadata, $criteria),
-            default  => throw new RuntimeException("Unsupported action: {$this->queryContext->action}"),
-        };
-
-        return $this;
-    }
-
     public function table(string $table, ?string $alias = null): self
     {
-        $tableQuoted = $this->databaseDriver->quoteIdentifier($table);
+        $this->queryContext->table = $table;
         $this->queryContext->alias = $alias;
 
-        $this->queryContext->table = $this->queryContext->action === 'select' && $alias
-            ? "$tableQuoted AS " . $this->databaseDriver->quoteIdentifier($alias)
-            : $tableQuoted;
-
         return $this;
     }
 
-    public function count(): self
-    {
-        $this->queryContext->action = "count";
-        return $this;
-    }
-
-    public function select(?array $selectColumns = null): self
+    public function select(array $selectColumns): self
     {
         $this->queryContext->action = "select";
 
-        if (!empty($selectColumns)) {
-            foreach ($selectColumns as $key => $alias) {
-                if (is_int($key)) {
-                    $this->queryContext->columns[] = $this->databaseDriver->quoteIdentifier($alias);
-                    continue;
-                }
-
-                [$table, $column] = explode('.', $key, 2) + [null, null];
-
-                $quoted = $column === null
-                    ? $this->databaseDriver->quoteIdentifier($table)
-                    : $this->databaseDriver->quoteIdentifier($table) . '.' . $this->databaseDriver->quoteIdentifier($column);
-                $quotedAlias = $this->databaseDriver->quoteIdentifier($alias);
-
-                $this->queryContext->columns[] = "$quoted AS $quotedAlias";
-            }
+        foreach ($selectColumns as $key => $alias) {
+            $this->queryContext->columns[] = is_int($key)
+                ? $alias
+                : sprintf('%s AS %s', $key, $this->databaseDriver->quoteIdentifier($alias));
         }
 
         return $this;
@@ -135,24 +80,9 @@ class QueryBuilder
         return $this;
     }
 
-    public function where(array $whereConditions, array $parameters): self
+    public function where(Expression $expression): self
     {
-        foreach ($whereConditions as $key => $value) {
-            [$table, $column] = explode(".", "$key", 2) + [null, null];
-
-            if (is_int($key)) {
-                $this->queryContext->where[] = $value; // value ist der raw SQL string
-                continue;
-            }
-
-            if (is_null($column)) {
-                $this->queryContext->where["{$this->databaseDriver->quoteIdentifier($table)}"] = $value;
-            } else {
-                $this->queryContext->where["{$this->databaseDriver->quoteIdentifier($table)}.{$this->databaseDriver->quoteIdentifier($column)}"] = $value;
-            }
-        }
-
-        $this->queryContext->parameters = array_merge($this->queryContext->parameters, $parameters);
+        $this->queryContext->where = $expression;
         return $this;
     }
 
@@ -272,18 +202,31 @@ class QueryBuilder
         return $this;
     }
 
-    public function leftJoin(string $table, string $alias, string $on): self
+    public function join(string $type, string $table, string $alias, string $on): self
     {
         $this->queryContext->joins[] = [
-            'type' => 'LEFT',
-            'table' => $this->databaseDriver->quoteIdentifier($table),
-            'alias' => $this->databaseDriver->quoteIdentifier($alias),
-            'on' => preg_replace_callback('/\b(\w+)\.(\w+)\b/', function ($matches) {
-                return $this->databaseDriver->quoteIdentifier($matches[1]) . '.' . $this->databaseDriver->quoteIdentifier($matches[2]);
-            }, $on),
+            "type" => strtoupper($type),
+            "table" => $table,
+            "alias" => $alias,
+            "on"=> $on,
         ];
 
         return $this;
+    }
+
+    public function leftJoin(string $table, string $alias, string $on): self
+    {
+        return $this->join("LEFT", $table, $alias, $on);
+    }
+
+    public function innerJoin(string $table, string $alias, string $on): self
+    {
+        return $this->join("INNER", $table, $alias, $on);
+    }
+
+    public function rightJoin(string $table, string $alias, string $on): self
+    {
+        return $this->join("RIGHT", $table, $alias, $on);
     }
 
     public function values(array $data): self
@@ -328,7 +271,7 @@ class QueryBuilder
         $this->queryContext->table = null;
         $this->queryContext->values = [];
         $this->queryContext->columns = [];
-        $this->queryContext->where = [];
+        $this->queryContext->where = null;
         $this->queryContext->joins = [];
         $this->queryContext->parameters = [];
     }

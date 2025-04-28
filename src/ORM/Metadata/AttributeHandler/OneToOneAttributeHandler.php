@@ -24,11 +24,11 @@ final readonly class OneToOneAttributeHandler implements MetadataAttributeHandle
      */
     public function build(ReflectionProperty $property, MetadataEntity $metadataEntity): void
     {
+        /** @var OneToOne $oneToOne */
         $oneToOne = $property->getAttributes(OneToOne::class)[0]->newInstance();
-        $joinColumnAttributes = $property->getAttributes(JoinColumn::class);
-        $joinColumn = !empty($joinColumnAttributes)
-            ? $joinColumnAttributes[0]->newInstance()
-            : null;
+        $joinColumnAttributes = $property->getAttributes(JoinColumn::class)[0] ?? null;
+        /** @var JoinColumn|null $joinColumn */
+        $joinColumn = $joinColumnAttributes?->newInstance();
 
         if ($joinColumn !== null) {
             $targetMetadata = $this->parser->parse($oneToOne->entity);
@@ -40,6 +40,5 @@ final readonly class OneToOneAttributeHandler implements MetadataAttributeHandle
         }
 
         $metadataEntity->addRelation($property->getName(), $oneToOne, $joinColumn);
-
     }
 }

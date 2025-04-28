@@ -7,6 +7,7 @@ use ORM\Attributes\ManyToOne;
 use ORM\Attributes\Column;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
+use ReflectionException;
 use ReflectionProperty;
 
 final readonly class ManyToOneAttributeHandler implements MetadataAttributeHandler
@@ -18,12 +19,16 @@ final readonly class ManyToOneAttributeHandler implements MetadataAttributeHandl
         return !empty($property->getAttributes(ManyToOne::class));
     }
 
+    /**
+     * @throws ReflectionException
+     */
     public function build(ReflectionProperty $property, MetadataEntity $metadataEntity): void
     {
         /** @var ManyToOne $manyToOne */
         $manyToOne = $property->getAttributes(ManyToOne::class)[0]->newInstance();
         $joinColumnAttr = $property->getAttributes(JoinColumn::class)[0] ?? null;
-        $joinColumn = $joinColumnAttr ? $joinColumnAttr->newInstance() : null;
+        /** @var JoinColumn|null $joinColumn */
+        $joinColumn = $joinColumnAttr?->newInstance();
 
         if ($joinColumn !== null) {
             $targetMetadata = $this->parser->parse($manyToOne->entity);

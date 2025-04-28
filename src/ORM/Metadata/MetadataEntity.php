@@ -5,6 +5,8 @@ namespace ORM\Metadata;
 use LogicException;
 use ORM\Attributes\Column;
 use ORM\Attributes\JoinColumn;
+use ORM\Attributes\JoinTable;
+use ORM\Attributes\ManyToMany;
 
 /**
  * Represents the ORM metadata for a single entity class.
@@ -192,15 +194,25 @@ class MetadataEntity
     /**
      * Adds a relation mapping to the entity.
      *
-     * @param string $propertyName The name of the relation property.
-     * @param object $relation The relation attribute instance (e.g., OneToOne).
-     * @param JoinColumn|null $joinColumn The optional join column definition.
+     * This method is used to define a relationship mapping for an entity property.
+     * The relation can be of type OneToOne, ManyToOne, ManyToMany, etc. Depending
+     * on the type of relation, the method decides whether to use a join column or
+     * a join table for defining the mapping.
+     *
+     * @param string $propertyName The name of the property representing the relation.
+     * @param object $relation The relation attribute instance (e.g., ManyToMany, OneToOne).
+     *                         Must be an instance of a relation attribute class.
+     * @param JoinTable|JoinColumn|null $joinMeta The optional metadata for the join.
+     *                                            For ManyToMany, this should be a JoinTable.
+     *                                            For OneToOne or ManyToOne, this should be a JoinColumn.
      */
-    public function addRelation(string $propertyName, object $relation, ?JoinColumn $joinColumn = null): void
+    public function addRelation(string $propertyName, object $relation, JoinColumn|JoinTable|null $joinMeta = null): void
     {
+        $relationType = $relation instanceof ManyToMany ? "joinTable" : "joinColumn";
+
         $this->relations[$propertyName] = [
-            'relation' => $relation,
-            'joinColumn' => $joinColumn,
+            "relation" => $relation,
+            $relationType => $joinMeta,
         ];
     }
 

@@ -31,9 +31,12 @@ $entityManager = new EntityManager($driver, $parser, $logger);
 
 ##### CREATE #####
 
-$postFound = new Post();
-$postFound->setTitle("ORMs sind magisch!");
-$postFound->setContent("Besonders mit Cascade und Dependency Ordering.");
+$role = new Role();
+$role->setName("Administrator");
+
+$post1 = new Post();
+$post1->setTitle("ORMs sind magisch!");
+$post1->setContent("Besonders mit Cascade und Dependency Ordering.");
 
 $post2 = new Post();
 $post2->setTitle("Phase 2 incoming");
@@ -47,8 +50,10 @@ $user->setUsername('john_doe');
 $user->setEmail('john@example.com');
 $user->setProfile($profile); // <- OneToOne Verknüpfung
 
-$user->addPost($postFound);
+$user->addPost($post1);
 $user->addPost($post2);
+
+$user->addRole($role);
 
 $entityManager->persist($user); // sollte via Cascade auch das Profile persistieren
 $entityManager->flush();

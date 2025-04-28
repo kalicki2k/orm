@@ -12,6 +12,7 @@ use ORM\Persistence\DeleteExecutor;
 use ORM\Persistence\DeleteSchedule;
 use ORM\Persistence\InsertExecutor;
 use ORM\Persistence\InsertSchedule;
+use ORM\Persistence\JoinTableSchedule;
 use ORM\Persistence\UpdateExecutor;
 use ORM\Persistence\UpdateSchedule;
 use Psr\Log\LoggerInterface;
@@ -31,6 +32,7 @@ class UnitOfWork
     private InsertSchedule $insertSchedule;
     private UpdateSchedule $updateSchedule;
     private DeleteSchedule $deleteSchedule;
+    private JoinTableSchedule $joinTableSchedule;
 
     /**
      * Constructor for the UnitOfWork.
@@ -51,6 +53,8 @@ class UnitOfWork
         $this->insertSchedule = new InsertSchedule($metadataParser);
         $this->updateSchedule = new UpdateSchedule();
         $this->deleteSchedule = new DeleteSchedule();
+
+        $this->joinTableSchedule = new JoinTableSchedule($metadataParser);
     }
 
     /**
@@ -67,6 +71,7 @@ class UnitOfWork
 
         $this->insertSchedule->schedule($entity);
         $this->cascadeHandler->handle($entity, CascadeType::Persist);
+        $this->joinTableSchedule->schedule($entity);
     }
 
     /**

@@ -46,6 +46,7 @@ class EntityHydrator implements Hydrator
             new LazyOneToOneHydrator($this->entityManager),
             new LazyOneToManyHydrator($this->entityManager),
             new LazyManyToOneHydrator($this->entityManager),
+            new LazyManyToManyHydrator($this->entityManager, $this->metadataParser),
             new EagerOneToOneHydrator($this->entityManager),
             new EagerOneToManyHydrator($this->entityManager, $this->reflectionCache, $this->metadataParser),
             new EagerManyToOneHydrator($this->entityManager),

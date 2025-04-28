@@ -118,6 +118,10 @@ class User extends EntityBase
 
     public function getRoles(): Collection
     {
+        if ($this->roles instanceof Closure) {
+            $this->roles = ($this->roles)();
+        }
+
         return $this->roles;
     }
 

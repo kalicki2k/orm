@@ -101,5 +101,12 @@ foreach ($entityManager->findAll(
         echo "    • [{$post->getId()}] {$post->getTitle()} – {$post->getContent()}\n";
     }
 
+    $roles = $user->getRoles();
+    $countRoles = count($roles);
+    echo "  Roles ($countRoles):\n";
+    foreach ($roles as $role) {
+        echo "    • [{$role->getId()}] {$role->getName()}\n";
+    }
+
     echo str_repeat('-', 40) . "\n";
 }

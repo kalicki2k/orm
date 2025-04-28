@@ -8,7 +8,7 @@ use ORM\Metadata\MetadataParser;
 use ReflectionException;
 use SplObjectStorage;
 
-class InsertSchedule
+class InsertSchedule implements Schedule
 {
     private SplObjectStorage $scheduledForInsert;
 

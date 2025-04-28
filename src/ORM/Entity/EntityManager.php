@@ -5,9 +5,14 @@ namespace ORM\Entity;
 use DateMalformedStringException;
 use Generator;
 use InvalidArgumentException;
+use ORM\Attributes\ManyToOne;
+use ORM\Attributes\OneToMany;
+use ORM\Attributes\OneToOne;
 use ORM\Cache\ReflectionCache;
 use ORM\Collection;
 use ORM\Drivers\DatabaseDriver;
+use ORM\Drivers\Statement;
+use ORM\Entity\Type\FetchType;
 use ORM\Hydration\EntityHydrator;
 use ORM\Hydration\Hydrator;
 use ORM\Metadata\MetadataEntity;
@@ -178,30 +183,63 @@ class EntityManager {
     }
 
     /**
-     * Finds all entities of a given type that match the provided criteria.
+     * Retrieves all entities of a given type that match the specified criteria.
      *
-     * Executes a SELECT query using metadata and returns a collection of hydrated entities.
-     * Entity hydration is handled via the EntityHydrator, including columns and relations.
-     * Entities are cached by ID in the identity map (EntityCache) to ensure uniqueness per request.
+     * This method executes a dynamic SELECT query based on entity metadata, optional filtering criteria,
+     * and query options like joins, ordering, limits, etc. It supports eager loading of relations via
+     * the "joins" option and ensures that each entity is properly hydrated, including its relations.
+     *
+     * The result is grouped by the primary key to handle joined rows correctly and returned
+     * as a Collection of unique, fully hydrated entity instances.
+     *
+     * Supported criteria formats:
+     * - Scalar (int|string): Treated as primary key lookup.
+     * - Associative array: Simple key-value WHERE conditions.
+     * - Expression object: Complex query conditions using the Expression builder.
+     * - Null: No filtering, retrieves all records.
      *
      * @template T of EntityBase
      *
      * @param class-string<T> $entityClass Fully-qualified class name of the entity (e.g. User::class).
-     * @param Expression|int|string|array|null $criteria Optional WHERE clause (e.g. ['status' => 'active']).
-     * @param array $options Optional query options (e.g. 'limit', 'offset', 'orderBy', 'joins').
+     * @param Expression|int|string|array|null $criteria Optional filtering conditions.
+     * @param array $options Optional query options:
+     *                       - "joins" => ["relation1", "relation2"]
+     *                       - "orderBy" => ["column" => "ASC"]
+     *                       - "limit" => int
+     *                       - "offset" => int
+     *                       - "distinct" => bool
      *
-     * @return Collection<T> Collection of hydrated entities of type T.
+     * @return Collection<T> A collection of hydrated entities.
      *
      * @throws ReflectionException If metadata or reflection fails.
      * @throws DateMalformedStringException If date/time conversion fails during hydration.
+     *
+     * @example // Fetch all users
+     * $users = $entityManager->findAll(User::class);
+     *
+     * @example // Fetch users with status "active"
+     * $users = $entityManager->findAll(User::class, ["status" => "active"]);
+     *
+     * @example // Fetch users with complex criteria and eager load profile
+     * $criteria = Expression::and()
+     *     ->andEq("user.status", "active")
+     *     ->orLike("user.email", "%@example.com");
+     *
+     * $users = $entityManager->findAll(
+     *     User::class,
+     *     $criteria,
+     *     ["joins" => ["profile"], "orderBy" => ["user.id" => "DESC"], "limit" => 10]
+     * );
      */
-    public function findAll(string $entityClass, Expression|int|string|array|null $criteria = null, array $options = []): Collection
+    public function findAll(
+        string $entityClass,
+        Expression|int|string|array|null $criteria = null,
+        array $options = []
+    ): Collection
     {
         $metadata = $this->getMetadata($entityClass);
-
-        $rows = new QueryBuilder($this->databaseDriver, $this->logger)
-            ->select()
-            ->fromMetadata($metadata, fn(string $class) => $this->getMetadata($class), [], $this->normalizeCriteria($criteria, $metadata), $options)
+        $rows = $this
+            ->buildSelectQuery($metadata, $criteria, $options)
             ->execute()
             ->fetchAll();
 
@@ -232,7 +270,7 @@ class EntityManager {
      *
      * Supports:
      * - Scalar primary key lookup (e.g. 123)
-     * - Associative array criteria (e.g. ['email' => 'foo@bar.com'])
+     * - Associative array criteria (e.g. ["email" => "foo@bar.com"])
      * - Expression tree (via ExpressionBuilder)
      *
      * If the entity was already hydrated and cached (via EntityCache), it is returned directly.
@@ -250,18 +288,15 @@ class EntityManager {
      * @throws DateMalformedStringException If date/time conversion fails during hydration.
      * @throws ReflectionException If metadata or reflection fails.
      */
-    public function findBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): ?EntityBase
+    public function findBy(
+        string $entityName,
+        Expression|int|string|array|null $criteria = null,
+        array $options = []
+    ): ?EntityBase
     {
         $metadata = $this->getMetadata($entityName);
-        $rows = new QueryBuilder($this->databaseDriver, $this->logger)
-            ->select()
-            ->fromMetadata(
-                $metadata,
-                fn(string $class) => $this->getMetadata($class),
-                [],
-                $this->normalizeCriteria($criteria, $metadata),
-                $options,
-            )
+        $rows = $this
+            ->buildSelectQuery($metadata, $criteria, $options)
             ->execute()
             ->fetchAll();
 
@@ -269,7 +304,7 @@ class EntityManager {
             return null;
         }
 
-        $entity   = $this->hydrateEntity($metadata, array_shift($rows));
+        $entity = $this->hydrateEntity($metadata, array_shift($rows));
 
         foreach ($rows as $row) {
             $this->hydrator->hydrateRelations($entity, $metadata, $row);
@@ -292,9 +327,13 @@ class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function streamAll(string $entityName, array $options = []): Generator
+    public function streamAll(
+        string $entityName,
+        Expression|int|string|array|null $criteria = null,
+        array $options = []
+    ): Generator
     {
-        return $this->streamInternal($entityName, null, $options);
+        return $this->streamInternal($entityName, $criteria, $options);
     }
 
     /**
@@ -306,7 +345,7 @@ class EntityManager {
      * @param string $entityName The fully-qualified class name of the entity.
      * @param Expression|int|string|array|null $criteria Optional filtering criteria.
      *        - Scalar (int|string): treated as lookup by primary key.
-     *        - Array: treated as key-value conditions (e.g. ['type' => 'admin']).
+     *        - Array: treated as key-value conditions (e.g. ["type" => "admin"]).
      *        - Expression: for advanced query logic (AND/OR groups etc.).
      * @param array $options Optional query options (e.g. joins, ordering, limits).
      *
@@ -315,7 +354,11 @@ class EntityManager {
      * @throws ReflectionException
      * @throws DateMalformedStringException
      */
-    public function streamBy(string $entityName, Expression|int|string|array|null $criteria = null, array $options = []): Generator
+    public function streamBy(
+        string $entityName,
+        Expression|int|string|array|null $criteria = null,
+        array $options = []
+    ): Generator
     {
         return $this->streamInternal($entityName, $criteria, $options);
     }
@@ -329,7 +372,7 @@ class EntityManager {
      * @param string $entityName The fully-qualified class name of the entity.
      * @param Expression|int|string|array|null $criteria Optional filtering criteria.
      *        - Scalar (int|string): treated as lookup by primary key.
-     *        - Array: treated as key-value conditions (e.g. ['status' => 'active']).
+     *        - Array: treated as key-value conditions (e.g. ["status" => "active"]).
      *        - Expression: allows advanced expressions via ExpressionBuilder.
      * @param array $options Optional additional options (e.g. joins, groupBy).
      *
@@ -339,24 +382,26 @@ class EntityManager {
      */
     public function countBy(
         string $entityName,
-        Expression|int|string|array|null
-        $criteria = null,
+        Expression|int|string|array|null $criteria = null,
         array $options = []
     ): int
     {
         $metadata = $this->getMetadata($entityName);
-        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
-            ->count()
-            ->fromMetadata(
-                $metadata,
-                null, [],
-                $this->normalizeCriteria($criteria, $metadata),
-                $options,
-            )
-            ->execute();
+        $column = "{$metadata->getAlias()}.{$metadata->getPrimaryKey()}";
 
-        $result = $statement->fetch();
-        return (int) ($result['count'] ?? 0);
+        $queryBuilder = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->select(["COUNT($column)" => "count"])
+            ->table($metadata->getTable(), $metadata->getAlias());
+
+        if ($criteria !== null) {
+            $queryBuilder->where($this->normalizeCriteria($criteria, $metadata));
+        }
+
+        $this->applyOptions($queryBuilder, $options);
+
+        $result = $queryBuilder->execute()->fetch();
+
+        return (int) ($result["count"] ?? 0);
     }
 
     /**
@@ -401,7 +446,7 @@ class EntityManager {
     /**
      * Normalizes different input formats for criteria into a consistent array or Expression.
      *
-     * Accepts primary key scalar (e.g. ID), associative arrays (e.g. ['email' => '...']),
+     * Accepts primary key scalar (e.g. ID), associative arrays (e.g. ["email" => "..."]),
      * or Expression objects for advanced conditions. This ensures that `findBy()`, `findAll()`, etc.
      * can be called flexibly while still being resolved to a valid internal query structure.
      *
@@ -410,18 +455,29 @@ class EntityManager {
      *
      * @return Expression|array The normalized criteria ready for query building.
      */
-    private function normalizeCriteria(Expression|int|string|array|null $criteria, MetadataEntity $metadata): Expression|array
+    private function normalizeCriteria(Expression|int|string|array|null $criteria, MetadataEntity $metadata): ?Expression
     {
         if ($criteria instanceof Expression) {
             return $criteria;
         }
 
         if (is_null($criteria)) {
-            return [];
+            return null;
+        }
+
+        if (is_scalar($criteria)) {
+            return Expression::eq(
+                $metadata->getAlias() . "." . $metadata->getPrimaryKey(),
+                $criteria
+            );
         }
 
         if (is_array($criteria)) {
-            return $criteria;
+            $expr = Expression::and();
+            foreach ($criteria as $col => $value) {
+                $expr->andEq($metadata->getAlias() . "." . $col, $value);
+            }
+            return $expr;
         }
 
         return [$metadata->getPrimaryKey() => $criteria];
@@ -494,6 +550,7 @@ class EntityManager {
      * @return Generator<T> A generator yielding hydrated entity instances.
      *
      * @throws ReflectionException If metadata or reflection fails.
+     * @throws DateMalformedStringException
      */
     private function streamInternal(
         string $entityName,
@@ -504,21 +561,25 @@ class EntityManager {
         $metadata = $this->getMetadata($entityName);
         $primaryKeyColumn = "{$metadata->getAlias()}_{$metadata->getPrimaryKey()}";
 
-        $statement = new QueryBuilder($this->databaseDriver, $this->logger)
-            ->select()
-            ->fromMetadata(
-                $metadata,
-                fn(string $class) => $this->getMetadata($class),
-                [],
-                $this->normalizeCriteria($criteria, $metadata),
-                $options
-            )
-            ->execute();
+        $queryBuilder = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->select([])
+            ->table($metadata->getTable(), $metadata->getAlias());
 
-        yield from $this->groupAndHydrateEntities($statement, $primaryKeyColumn, $metadata);
+        $this->applyJoinsAndColumns($queryBuilder, $metadata, $options);
+
+        if ($criteria !== null) {
+            $queryBuilder->where($this->normalizeCriteria($criteria, $metadata));
+        }
+
+        $this->applyOptions($queryBuilder, $options);
+        yield from $this->groupAndHydrateEntities($queryBuilder->execute(), $primaryKeyColumn, $metadata);
     }
 
-    private function groupAndHydrateEntities($statement, string $primaryKeyColumn, MetadataEntity $metadata): Generator
+    /**
+     * @throws DateMalformedStringException
+     * @throws ReflectionException
+     */
+    private function groupAndHydrateEntities(Statement $statement, string $primaryKeyColumn, MetadataEntity $metadata): Generator
     {
         $currentId = null;
         $group = [];
@@ -540,6 +601,10 @@ class EntityManager {
         }
     }
 
+    /**
+     * @throws DateMalformedStringException
+     * @throws ReflectionException
+     */
     private function hydrateGroupedEntity(array $group, MetadataEntity $metadata): EntityBase
     {
         $entity = $this->hydrateEntity($metadata, array_shift($group));
@@ -550,4 +615,132 @@ class EntityManager {
 
         return $entity;
     }
+
+    private function applyOptions(QueryBuilder $queryBuilder, array $options): void
+    {
+        if (isset($options["distinct"])) {
+            $queryBuilder->distinct();
+        }
+
+        if (isset($options["orderBy"])) {
+            $queryBuilder->orderBy($options["orderBy"]);
+        }
+
+        if (isset($options["limit"])) {
+            $queryBuilder->limit($options["limit"]);
+        }
+
+        if (isset($options["offset"])) {
+            $queryBuilder->offset($options["offset"]);
+        }
+    }
+
+    private function applyJoinsAndColumns(QueryBuilder $queryBuilder, MetadataEntity $metadata, array $options): void
+    {
+        $this->applySelectColumns($queryBuilder, $metadata, $metadata->getAlias());
+
+        foreach ($options["joins"] ?? [] as $relationName) {
+            $relationMetadata = $metadata->getRelations()[$relationName] ?? null;
+            if ($relationMetadata === null) {
+                continue;
+            }
+
+            $relation = $relationMetadata["relation"];
+
+            if ($relation->fetch === FetchType::Lazy) {
+                continue;
+            }
+
+            $relationAlias = $metadata->getRelationAlias($relationName);
+            $targetMetadata = $this->getMetadata($relation->entity);
+
+            if ($relation instanceof OneToOne || $relation instanceof ManyToOne) {
+                $joinColumn = $relationMetadata["joinColumn"] ?? null;
+                if ($joinColumn === null) {
+                    continue;
+                }
+
+                $this->applyJoin(
+                    $queryBuilder,
+                    $metadata->getAlias(),
+                    $relationAlias,
+                    $joinColumn->name,
+                    $joinColumn->referencedColumn,
+                    $targetMetadata->getTable()
+                );
+
+                $this->applySelectColumns($queryBuilder, $targetMetadata, $relationAlias);
+            }
+
+            if ($relation instanceof OneToMany) {
+                $mappedBy = $relation->mappedBy;
+                $fkColumn = $targetMetadata->getColumns()["{$mappedBy}_{$targetMetadata->getPrimaryKey()}"]["name"] ?? null;
+
+                if ($fkColumn === null) {
+                    continue;
+                }
+
+                $this->applyJoin(
+                    $queryBuilder,
+                    $metadata->getAlias(),
+                    $relationAlias,
+                    $metadata->getPrimaryKey(),
+                    $fkColumn,
+                    $targetMetadata->getTable()
+                );
+
+                $this->applySelectColumns($queryBuilder, $targetMetadata, $relationAlias);
+            }
+        }
+    }
+
+    private function applySelectColumns(QueryBuilder $queryBuilder, MetadataEntity $metadata, string $alias): void
+    {
+        foreach ($metadata->getColumns() as $column) {
+            $queryBuilder->select([
+                "{$alias}.{$column["name"]}" => "{$alias}_{$column["name"]}"
+            ]);
+        }
+    }
+
+    private function applyJoin(QueryBuilder $queryBuilder, string $sourceAlias, string $targetAlias, string $sourceColumn, string $targetColumn, string $targetTable): void
+    {
+        $queryBuilder->leftJoin(
+            $targetTable,
+            $targetAlias,
+            sprintf(
+                "%s.%s = %s.%s",
+                $sourceAlias,
+                $sourceColumn,
+                $targetAlias,
+                $targetColumn
+            )
+        );
+    }
+
+
+
+    /**
+     * @throws ReflectionException
+     */
+    private function buildSelectQuery(
+        MetadataEntity $metadata,
+        Expression|int|string|array|null $criteria,
+        array $options = []
+    ): QueryBuilder {
+        $queryBuilder = new QueryBuilder($this->databaseDriver, $this->logger)
+            ->select([])
+            ->table($metadata->getTable(), $metadata->getAlias());
+
+        $this->applyJoinsAndColumns($queryBuilder, $metadata, $options);
+
+        if ($criteria !== null) {
+            $queryBuilder->where($this->normalizeCriteria($criteria, $metadata));
+        }
+
+        $this->applyOptions($queryBuilder, $options);
+
+        return $queryBuilder;
+    }
+
 }

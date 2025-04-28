@@ -22,7 +22,7 @@ final class UpdateSqlRenderer implements SqlRenderer
             $setParts[] = "$quoted = :$column";
         }
 
-        $sql = "UPDATE $queryContext->table SET " . implode(', ', $setParts);
+        $sql = "UPDATE $queryContext->table SET " . implode(", ", $setParts);
 
         if (!empty($queryContext->where)) {
             $whereParts = [];

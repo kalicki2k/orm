@@ -405,7 +405,7 @@ final class Expression
         }
 
         return [
-            [implode(" ", $sql)],
+            implode(" ", $sql),
             $params
         ];
     }
@@ -424,7 +424,20 @@ final class Expression
      */
     private function add(string $sql, array $params, string $glue = "AND"): self
     {
-        $this->expressions[] = ["sql" => $sql, "params" => $params, "glue" => $glue];
+        $sanitizedParams = [];
+
+        foreach ($params as $key => $value) {
+            $paramName = str_replace('.', '_', $key);
+            $sql = str_replace(":$key", ":$paramName", $sql);
+            $sanitizedParams[$paramName] = $value;
+        }
+
+        $this->expressions[] = [
+            "sql" => $sql,
+            "params" => $sanitizedParams,
+            "glue" => $glue
+        ];
+
         return $this;
     }
 

@@ -698,6 +698,12 @@ class EntityManager {
         return $this->hydrator->hydrate($metadata, $data);
     }
 
+    public function createQueryBuilder(): QueryBuilder
+    {
+        return new QueryBuilder($this->databaseDriver, $this->logger);
+    }
+
+
     /**
      * Executes a streaming query to fetch entities matching the given criteria and options.
      *
@@ -991,7 +997,8 @@ class EntityManager {
      * @param string $targetTable  The physical name of the target database table.
      *
      * @return void
-     */private function applyJoin(
+     */
+    private function applyJoin(
         QueryBuilder $queryBuilder,
         string $sourceAlias,
         string $targetAlias,

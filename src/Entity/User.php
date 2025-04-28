@@ -49,7 +49,7 @@ class User extends EntityBase
     )]
     private Collection|Closure $posts;
 
-    #[ManyToMany(entity: Role::class)]
+    #[ManyToMany(entity: Role::class, cascade: [CascadeType::Persist, CascadeType::Remove])]
     #[JoinTable(name: "user_roles", joinColumn: "user_id", inverseJoinColumn: "role_id")]
     private Collection|Closure $roles;
 

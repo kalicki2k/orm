@@ -27,6 +27,11 @@ CREATE TABLE posts (
        ON UPDATE CASCADE
 );
 
+CREATE TABLE roles (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL
+);
+
 CREATE TABLE user_roles (
     user_id INT NOT NULL,
     role_id INT NOT NULL,

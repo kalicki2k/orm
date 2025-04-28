@@ -3,69 +3,99 @@
 namespace ORM\Persistence;
 
 use ORM\Attributes\ManyToMany;
-use ORM\Cache\ReflectionCache;
 use ORM\Collection;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
-use SplObjectStorage;
+use ReflectionException;
 
-class JoinTableSchedule implements Schedule
+class JoinTableSchedule
 {
-    private SplObjectStorage $scheduledForInsert;
-    private SplObjectStorage $scheduledForUpdate;
+    private array $scheduledForInsert;
+    private array $scheduledForDelete;
 
     public function __construct(private readonly MetadataParser $metadataParser)
     {
-        $this->scheduledForInsert = new SplObjectStorage();
-        $this->scheduledForUpdate = new SplObjectStorage();
+        $this->scheduledForInsert = [];
+        $this->scheduledForDelete = [];
     }
 
-    public function schedule(EntityBase $entity): void
+    /**
+     * @return array
+     */
+    public function getScheduledForInsert(): array
+    {
+        return $this->scheduledForInsert;
+    }
+
+    /**
+     * @return array
+     */
+    public function getScheduledForDelete(): array
+    {
+        return $this->scheduledForDelete;
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function scheduleForInsert(EntityBase $entity): void
+    {
+        $this->schedule($entity, $this->scheduledForInsert);
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    public function scheduleForDelete(EntityBase $entity): void
+    {
+        $this->schedule($entity, $this->scheduledForDelete);
+    }
+
+    public function contains(EntityBase $entity, string $property, EntityBase $relatedEntity): bool
+    {
+        return array_any($this->scheduledForInsert, fn($entry) => $entry["entity"] === $entity
+            && $entry["property"] === $property
+            && $entry["relatedEntity"] === $relatedEntity
+        );
+    }
+
+    public function clear(): void
+    {
+        $this->scheduledForInsert = [];
+        $this->scheduledForDelete = [];
+    }
+
+    /**
+     * @throws ReflectionException
+     */
+    private function schedule(EntityBase $entity, array &$targetSchedule): void
     {
         $metadata = $this->metadataParser->parse($entity::class);
 
         foreach ($metadata->getRelations() as $property => $relation) {
-            if ($relation["relation"] instanceof ManyToMany && isset($relation["joinTable"])) {
-                $reflectionProperty = $this->metadataParser->getReflectionCache()->getProperty($entity, $property);
-                /** @var Collection $collection */
-                $collection = $reflectionProperty->getValue($entity);
+            if (!($relation["relation"] instanceof ManyToMany) || !isset($relation["joinTable"])) {
+                continue;
+            }
 
-                //                $data = $this->metadataParser->extract($entity);
+            $reflectionProperty = $this->metadataParser->getReflectionCache()->getProperty($entity, $property);
+            /** @var Collection $collection */
+            $collection = $reflectionProperty->getValue($entity);
 
-                var_dump($collection);
+            if ($collection->count() === 0) {
+                continue;
+            }
+
+            foreach ($collection as $relatedEntity) {
+                if ($this->contains($entity, $property, $relatedEntity, $targetSchedule)) {
+                    continue;
+                }
+
+                $targetSchedule[] = [
+                    "entity" => $entity,
+                    "property" => $property,
+                    "relatedEntity" => $relatedEntity
+                ];
             }
         }
-    }
-
-    public function contains(EntityBase $entity): bool
-    {
-        return false;
-    }
-
-    public function getAll(): SplObjectStorage|array
-    {
-        return [];
-    }
-
-//    public function getScheduledForInsert(): SplObjectStorage
-//    {
-//        return $this->scheduledForInsert;
-//    }
-//
-//    public function getScheduledForUpdate(): SplObjectStorage
-//    {
-//        return $this->scheduledForUpdate;
-//    }
-//
-//    public function scheduleForInsert(EntityBase $entity): void
-//    {
-//        $this->scheduledForInsert = new SplObjectStorage();
-//        var_dump($entity);
-//    }
-
-    public function clear(): void
-    {
-        $this->scheduledForInsert = new SplObjectStorage();
-        $this->scheduledForUpdate = new SplObjectStorage();
     }
 }

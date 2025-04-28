@@ -5,7 +5,7 @@ namespace ORM\Persistence;
 use ORM\Entity\EntityBase;
 use SplObjectStorage;
 
-class UpdateSchedule
+class UpdateSchedule implements Schedule
 {
     private SplObjectStorage $scheduledForUpdate;
 

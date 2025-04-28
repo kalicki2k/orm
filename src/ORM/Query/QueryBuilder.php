@@ -37,7 +37,7 @@ class QueryBuilder
             "insert" => new InsertSqlRenderer()->render($this->queryContext, $this->databaseDriver),
             "update" => new UpdateSqlRenderer()->render($this->queryContext, $this->databaseDriver),
             "delete" => new DeleteSqlRenderer()->render($this->queryContext, $this->databaseDriver),
-            default => new RuntimeException("Unknown action: {$this->queryContext->action}")
+            default => throw new RuntimeException("Unknown action: {$this->queryContext->action}")
         };
     }
 
@@ -56,7 +56,10 @@ class QueryBuilder
         foreach ($selectColumns as $key => $alias) {
             $this->queryContext->columns[] = is_int($key)
                 ? $alias
-                : sprintf('%s AS %s', $key, $this->databaseDriver->quoteIdentifier($alias));
+                : sprintf("%s AS %s",
+                    $key,
+                    $this->databaseDriver->quoteIdentifier($alias),
+                );
         }
 
         return $this;
@@ -245,7 +248,7 @@ class QueryBuilder
             $statement = $this->databaseDriver->prepare($sql);
 
             foreach ($this->queryContext->parameters as $parameter => $value) {
-                $statement->bindValue(":$parameter", $value);
+                $statement->bindValue(str_starts_with($parameter, ':') ? $parameter : ":$parameter", $value);
             }
 
             LogHelper::query($sql, $this->queryContext->parameters, $this->logger);
@@ -269,10 +272,16 @@ class QueryBuilder
     {
         $this->queryContext->action = null;
         $this->queryContext->table = null;
+        $this->queryContext->alias = null;
         $this->queryContext->values = [];
         $this->queryContext->columns = [];
         $this->queryContext->where = null;
         $this->queryContext->joins = [];
         $this->queryContext->parameters = [];
+        $this->queryContext->limit = null;
+        $this->queryContext->offset = null;
+        $this->queryContext->orderBy = [];
+        $this->queryContext->groupBy = [];
+        $this->queryContext->distinct = false;
     }
 }

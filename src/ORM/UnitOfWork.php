@@ -2,7 +2,6 @@
 
 namespace ORM;
 
-use ORM\Cache\EntityCache;
 use ORM\Drivers\DatabaseDriver;
 use ORM\Entity\EntityBase;
 use ORM\Entity\Type\CascadeType;
@@ -12,11 +11,12 @@ use ORM\Persistence\DeleteExecutor;
 use ORM\Persistence\DeleteSchedule;
 use ORM\Persistence\InsertExecutor;
 use ORM\Persistence\InsertSchedule;
+use ORM\Persistence\JoinTableExecutor;
+use ORM\Persistence\JoinTableSchedule;
 use ORM\Persistence\UpdateExecutor;
 use ORM\Persistence\UpdateSchedule;
 use Psr\Log\LoggerInterface;
 use ReflectionException;
-use SplObjectStorage;
 
 /**
  * The UnitOfWork class manages the lifecycle of entities and their persistence state.
@@ -27,10 +27,12 @@ class UnitOfWork
     private InsertExecutor $insertExecutor;
     private UpdateExecutor $updateExecutor;
     private DeleteExecutor $deleteExecutor;
+    private JoinTableExecutor $joinTableExecutor;
     private CascadeHandler $cascadeHandler;
     private InsertSchedule $insertSchedule;
     private UpdateSchedule $updateSchedule;
     private DeleteSchedule $deleteSchedule;
+    private JoinTableSchedule $joinTableSchedule;
 
     /**
      * Constructor for the UnitOfWork.
@@ -44,13 +46,16 @@ class UnitOfWork
         private readonly MetadataParser $metadataParser,
         readonly ?LoggerInterface $logger = null,
     ) {
-        $this->insertExecutor = new InsertExecutor($databaseDriver, $metadataParser, $logger);
-        $this->updateExecutor = new UpdateExecutor($databaseDriver, $metadataParser, $logger);
-        $this->deleteExecutor = new DeleteExecutor($databaseDriver, $metadataParser, $logger);
-        $this->cascadeHandler = new CascadeHandler($metadataParser, $this);
-        $this->insertSchedule = new InsertSchedule($metadataParser);
+        $this->insertExecutor = new InsertExecutor($databaseDriver, $this->metadataParser, $logger);
+        $this->updateExecutor = new UpdateExecutor($databaseDriver, $this->metadataParser, $logger);
+        $this->deleteExecutor = new DeleteExecutor($databaseDriver, $this->metadataParser, $logger);
+        $this->cascadeHandler = new CascadeHandler($this->metadataParser, $this);
+        $this->insertSchedule = new InsertSchedule($this->metadataParser);
         $this->updateSchedule = new UpdateSchedule();
         $this->deleteSchedule = new DeleteSchedule();
+
+        $this->joinTableSchedule = new JoinTableSchedule($this->metadataParser);
+        $this->joinTableExecutor = new JoinTableExecutor($databaseDriver, $this->metadataParser, $this->logger);
     }
 
     /**
@@ -67,6 +72,7 @@ class UnitOfWork
 
         $this->insertSchedule->schedule($entity);
         $this->cascadeHandler->handle($entity, CascadeType::Persist);
+        $this->joinTableSchedule->scheduleForInsert($entity);
     }
 
     /**
@@ -82,6 +88,10 @@ class UnitOfWork
         }
 
         $this->updateSchedule->schedule($entity);
+
+        // @todo: Collection needs a history of changes
+        $this->joinTableSchedule->scheduleForDelete($entity);
+        $this->joinTableSchedule->scheduleForInsert($entity);
     }
 
     /**
@@ -98,6 +108,7 @@ class UnitOfWork
 
         $this->deleteSchedule->schedule($entity);
         $this->cascadeHandler->handle($entity, CascadeType::Remove);
+        $this->joinTableSchedule->scheduleForInsert($entity);
     }
 
     /**
@@ -119,9 +130,12 @@ class UnitOfWork
             $this->executeUpdate($entity);
         }
 
+        $this->joinTableExecutor->execute($this->joinTableSchedule);
+
         $this->insertSchedule->clear();
         $this->updateSchedule->clear();
         $this->deleteSchedule->clear();
+        $this->joinTableSchedule->clear();
     }
 
     /**

@@ -16,9 +16,9 @@ final readonly class EagerManyToOneHydrator implements RelationHydrator
 
     public function supports(array $relation): bool
     {
-        return $relation['relation'] instanceof ManyToOne
-            && $relation['relation']->fetch === FetchType::Eager
-            && isset($relation['joinColumn']);
+        return $relation["relation"] instanceof ManyToOne
+            && $relation["relation"]->fetch === FetchType::Eager
+            && isset($relation["joinColumn"]);
     }
 
     /**

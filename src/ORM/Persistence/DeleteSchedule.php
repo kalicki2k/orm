@@ -5,7 +5,7 @@ namespace ORM\Persistence;
 use ORM\Entity\EntityBase;
 use SplObjectStorage;
 
-class DeleteSchedule
+class DeleteSchedule implements Schedule
 {
     private SplObjectStorage $scheduledForDelete;
 

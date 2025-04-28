@@ -2,6 +2,7 @@
 
 namespace ORM\Persistence;
 
+use Closure;
 use ORM\Entity\EntityBase;
 use ORM\Metadata\MetadataParser;
 use SplObjectStorage;
@@ -59,7 +60,7 @@ class InsertSchedule
         foreach ($metadata->getRelations() as $property => $relationInfo) {
             $related = $reflection->getValue($entity, $property);
 
-            if ($related instanceof \Closure) {
+            if ($related instanceof Closure) {
                 $related = $related();
             }
 

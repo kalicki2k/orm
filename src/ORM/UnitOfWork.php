@@ -108,7 +108,7 @@ class UnitOfWork
 
         $this->deleteSchedule->schedule($entity);
         $this->cascadeHandler->handle($entity, CascadeType::Remove);
-        $this->joinTableSchedule->scheduleForInsert($entity);
+        $this->joinTableSchedule->scheduleForDelete($entity);
     }
 
     /**

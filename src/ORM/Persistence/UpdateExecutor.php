@@ -35,7 +35,6 @@ final readonly class UpdateExecutor
             throw new InvalidArgumentException("Missing primary key value for update");
         }
 
-
         new QueryBuilder($this->databaseDriver, $this->logger)
             ->update()
             ->table($metadata->getTable())

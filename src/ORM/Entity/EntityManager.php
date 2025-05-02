@@ -952,7 +952,7 @@ class EntityManager {
                     continue;
                 }
 
-                $joinTableAlias = $metadata->getAlias() . '___' . $relationName;
+                $joinTableAlias = $metadata->getAlias() . "___" . $relationName;
                 $targetMetadata = $this->getMetadata($relation->entity);
                 $targetMetadata->setAlias($relationAlias);
 

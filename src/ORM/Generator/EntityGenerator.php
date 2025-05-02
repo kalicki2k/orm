@@ -2,6 +2,7 @@
 
 namespace ORM\Generator;
 
+use InvalidArgumentException;
 use ORM\Drivers\DatabaseDriver;
 
 class EntityGenerator
@@ -10,6 +11,12 @@ class EntityGenerator
 
     public function generate(string $table, string $fqcn): string
     {
+        if (!str_contains($fqcn, '/')) {
+            throw new InvalidArgumentException("FQCN must be specified in the format 'Namespace/Class', e.g. 'Entity/User'.'.");
+        }
+
+        $fqcn = str_replace('/', '\\', $fqcn);
+
         $columns = $this->fetchColumns($table);
         $className = basename(str_replace("\\", "/", $fqcn));
         $namespace = str_contains($fqcn, "\\") ? substr($fqcn, 0, strrpos($fqcn, "\\")) : "";
@@ -26,7 +33,7 @@ class EntityGenerator
 
         $code .= "use ORM\\Attributes\\JoinColumn;\n";
         $code .= "use ORM\\Attributes\\OneToOne;\n";
-        $code .= "use ORM\\Attributes\\ManyToOne;\n";
+        $code .= "use ORM\\Attributes\\ManyToOne;\n\n";
 
         $code .= "#[Entity]\n";
         $code .= "#[Table(\"$table\")]\n";
@@ -57,9 +64,10 @@ class EntityGenerator
                     $code .= "    #[ManyToOne(entity: $targetEntity::class)]\n";
                 }
 
+//                $code .= "    #[JoinColumn(name: \"$name\", referencedColumnName: \"{$foreignKeyMap[$name]["referencedColumn"]}\")]\n";
+                $propertyName = preg_replace('/_id$/', '', $name);
                 $code .= "    #[JoinColumn(name: \"$name\", referencedColumnName: \"{$foreignKeyMap[$name]["referencedColumn"]}\")]\n";
-                $code .= "    private $targetEntity \$$name;\n\n";
-
+                $code .= "    private $targetEntity|\\Closure|null \$$propertyName = null;\n\n";
                 continue;
             }
 
@@ -149,15 +157,13 @@ class EntityGenerator
 
     private function resolveEntityClass(string $tableName): string
     {
-        $class = "Entity\\" . str_replace(" ", "", ucwords(str_replace("_", " ", $tableName)));
-        $singular = match (true) {
-            str_ends_with($class, 'ies') => substr($class, 0, -3) . 'y',   // categories → Category
-            str_ends_with($class, 'ses') => substr($class, 0, -2),         // statuses → Status
-            str_ends_with($class, 's') => substr($class, 0, -1),           // users → user
+        $class = str_replace(" ", "", ucwords(str_replace("_", " ", $tableName)));
+        return match (true) {
+            str_ends_with($class, 'ies') => substr($class, 0, -3) . 'y',
+            str_ends_with($class, 'ses') => substr($class, 0, -2),
+            str_ends_with($class, 's') => substr($class, 0, -1),
             default => $class,
         };
-
-        return "Entity\\$singular";
     }
 
     private function generateGetters(array $columns, array $foreignKeyMap): string
@@ -168,20 +174,33 @@ class EntityGenerator
             $name = $col['COLUMN_NAME'];
 
             if (isset($foreignKeyMap[$name])) {
-                $type = $this->resolveEntityClass($foreignKeyMap[$name]['referencedTable']);
+                $entityClass = $this->resolveEntityClass($foreignKeyMap[$name]['referencedTable']);
+                $method = 'get' . str_replace(' ', '', ucwords(str_replace('_id', '', str_replace('_', ' ', $name))));
+                $propertyName = str_replace('_id', '', $name);
+
+                $output .= <<<PHP
+
+    public function $method(): $entityClass
+    {
+        if (\$this->$propertyName instanceof \Closure) {
+            \$this->$propertyName = (\$this->$propertyName)();
+        }
+        return \$this->$propertyName;
+    }
+
+PHP;
             } else {
                 $mapped = $this->mapType($col['DATA_TYPE']);
                 $type = match ($mapped) {
                     'int' => 'int',
                     'string' => 'string',
-                    'datetime' => '\DateTimeInterface',
+                    'datetime' => '\\DateTimeInterface',
                     default => 'mixed',
                 };
-            }
 
-            $method = 'get' . str_replace(' ', '', ucwords(str_replace('_', ' ', $name)));
+                $method = 'get' . str_replace(' ', '', ucwords(str_replace('_', ' ', $name)));
 
-            $output .= <<<PHP
+                $output .= <<<PHP
 
     public function $method(): $type
     {
@@ -189,9 +208,11 @@ class EntityGenerator
     }
 
 PHP;
+            }
         }
 
         return $output;
     }
+
 
 }

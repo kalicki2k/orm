@@ -5,6 +5,7 @@ namespace ORM\Entity;
 use DateMalformedStringException;
 use Generator;
 use InvalidArgumentException;
+use ORM\Attributes\ManyToMany;
 use ORM\Attributes\ManyToOne;
 use ORM\Attributes\OneToMany;
 use ORM\Attributes\OneToOne;
@@ -944,6 +945,39 @@ class EntityManager {
 
                 $this->applySelectColumns($queryBuilder, $targetMetadata, $relationAlias);
             }
+
+            if ($relation instanceof ManyToMany) {
+                $joinTable = $relationMetadata["joinTable"] ?? null;
+                if ($joinTable === null) {
+                    continue;
+                }
+
+                $joinTableAlias = "jt_" . $relationAlias;
+                $targetMetadata = $this->getMetadata($relation->entity);
+                $targetMetadata->setAlias($relationAlias);
+
+                $this->applyJoin(
+                    $queryBuilder,
+                    $metadata->getAlias(),
+                    $joinTableAlias,
+                    $metadata->getPrimaryKey(),
+                    $joinTable->joinColumn,
+                    $joinTable->name,
+                    "INNER"
+                );
+
+                $this->applyJoin(
+                    $queryBuilder,
+                    $joinTableAlias,
+                    $relationAlias,
+                    $joinTable->inverseJoinColumn,
+                    $targetMetadata->getPrimaryKey(),
+                    $targetMetadata->getTable(),
+                    "INNER"
+                );
+
+                $this->applySelectColumns($queryBuilder, $targetMetadata, $relationAlias);
+            }
         }
     }
 
@@ -971,7 +1005,7 @@ class EntityManager {
     {
         foreach ($metadata->getColumns() as $column) {
             $queryBuilder->select([
-                "{$alias}.{$column["name"]}" => "{$alias}_{$column["name"]}"
+                "$alias.{$column["name"]}" => "{$alias}_{$column["name"]}"
             ]);
         }
     }
@@ -994,8 +1028,8 @@ class EntityManager {
      * @param string $targetAlias Alias for the target (related) entity table.
      * @param string $sourceColumn The column in the source table used for joining.
      * @param string $targetColumn The referenced column in the target table.
-     * @param string $targetTable  The physical name of the target database table.
-     *
+     * @param string $targetTable The physical name of the target database table.
+     * @param string $joinType
      * @return void
      */
     private function applyJoin(
@@ -1004,10 +1038,12 @@ class EntityManager {
         string $targetAlias,
         string $sourceColumn,
         string $targetColumn,
-        string $targetTable
+        string $targetTable,
+        string $joinType = "LEFT"
     ): void
     {
-        $queryBuilder->leftJoin(
+        $queryBuilder->join(
+            $joinType,
             $targetTable,
             $targetAlias,
             sprintf(
@@ -1016,9 +1052,10 @@ class EntityManager {
                 $sourceColumn,
                 $targetAlias,
                 $targetColumn
-            )
+            ),
         );
     }
+
 
     /**
      * Builds a dynamic SELECT query based on entity metadata, criteria, and options.

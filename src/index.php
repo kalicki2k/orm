@@ -75,38 +75,38 @@ echo "Neuer Username: " . $user->getUsername() . "\n";
 echo "Neues Bio: " . $user->getProfile()->getBio() . "\n";
 
 ########## DELETE ##########
-
+//
 //$entityManager->delete($user);
 //$entityManager->flush();
-//
-//echo "❌ User und Profile gelöscht!\n";
+
+echo "❌ User und Profile gelöscht!\n";
 
 ########## STREAM ##########
 
-//echo "Alle User (streamAll):\n";
-//
-//foreach ($entityManager->findAll(
-//    User::class,
-//    null,
-//    ['joins' => ['profile', 'posts']]
-//) as $user) {
-//    echo "User #{$user->getId()}: {$user->getUsername()} <{$user->getEmail()}>\n";
-//
-//    $profile = $user->getProfile();
-//    echo "  Profile: ID={$profile->getId()}, Bio=\"{$profile->getBio()}\"\n";
-////
-//    $count = count($user->getPosts());
-//    echo "  Posts ({$count}):\n";
-//    foreach ($user->getPosts() as $post) {
-//        echo "    • [{$post->getId()}] {$post->getTitle()} – {$post->getContent()}\n";
-//    }
-//
-//    $roles = $user->getRoles();
-//    $countRoles = count($roles);
-//    echo "  Roles ($countRoles):\n";
-//    foreach ($roles as $role) {
-//        echo "    • [{$role->getId()}] {$role->getName()}\n";
-//    }
-//
-//    echo str_repeat('-', 40) . "\n";
-//}
+echo "Alle User (streamAll):\n";
+
+foreach ($entityManager->findAll(
+    User::class,
+    null,
+    ["joins" => ["profile", "posts", "roles"]]
+) as $user) {
+    echo "User #{$user->getId()}: {$user->getUsername()} <{$user->getEmail()}>\n";
+
+    $profile = $user->getProfile();
+    echo "  Profile: ID={$profile->getId()}, Bio=\"{$profile->getBio()}\"\n";
+
+    $count = count($user->getPosts());
+    echo "  Posts ({$count}):\n";
+    foreach ($user->getPosts() as $post) {
+        echo "    • [{$post->getId()}] {$post->getTitle()} – {$post->getContent()}\n";
+    }
+
+    $roles = $user->getRoles();
+    $countRoles = count($roles);
+    echo "  Roles ($countRoles):\n";
+    foreach ($roles as $role) {
+        echo "    • [{$role->getId()}] {$role->getName()}\n";
+    }
+
+    echo str_repeat('-', 40) . "\n";
+}

@@ -50,6 +50,7 @@ class EntityHydrator implements Hydrator
             new EagerOneToOneHydrator($this->entityManager),
             new EagerOneToManyHydrator($this->entityManager, $this->reflectionCache, $this->metadataParser),
             new EagerManyToOneHydrator($this->entityManager),
+            new EagerManyToManyHydrator($this->entityManager, $this->reflectionCache, $this->metadataParser),
         ];
     }
 

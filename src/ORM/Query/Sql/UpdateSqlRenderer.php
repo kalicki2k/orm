@@ -3,6 +3,7 @@
 namespace ORM\Query\Sql;
 
 use ORM\Drivers\DatabaseDriver;
+use ORM\Query\Expression;
 use ORM\Query\QueryContext;
 use RuntimeException;
 
@@ -24,12 +25,9 @@ final class UpdateSqlRenderer implements SqlRenderer
 
         $sql = "UPDATE $queryContext->table SET " . implode(", ", $setParts);
 
-        if (!empty($queryContext->where)) {
-            $whereParts = [];
-            foreach ($queryContext->where as $key => $value) {
-                $whereParts[] = "$key = $value";
-            }
-            $sql .= " WHERE " . implode(" AND ", $whereParts);
+        if ($queryContext->where instanceof Expression) {
+            [$whereSql] = $queryContext->where->compile();
+            $sql .= " WHERE " . $whereSql;
         }
 
         return $sql;

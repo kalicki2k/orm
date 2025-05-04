@@ -2,9 +2,31 @@
 <?php
 
 use ORM\CLI\Application;
+use Symfony\Component\Console\Input\ArgvInput;
+use Symfony\Component\Console\Output\ConsoleOutput;
+use Symfony\Component\Console\Style\SymfonyStyle;
 
 require __DIR__ . '/../vendor/autoload.php';
 
 
 $application = new Application();
-$application->run();
+
+try {
+    $application->run();
+} catch (Throwable $e) {
+    $output = new SymfonyStyle(
+        new ArgvInput(),
+        new ConsoleOutput()
+    );
+
+    $output->error([
+        'Unexpected error occurred:',
+        $e->getMessage(),
+    ]);
+
+    if ($output->isVerbose()) {
+        $output->writeln($e->getTraceAsString());
+    }
+
+    exit(1);
+}

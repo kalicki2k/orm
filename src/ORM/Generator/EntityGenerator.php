@@ -3,10 +3,19 @@
 namespace ORM\Generator;
 
 use InvalidArgumentException;
+use ORM\Attributes\Entity;
+use ORM\Attributes\Table;
 use ORM\Drivers\DatabaseDriver;
+use ORM\Entity\EntityBase;
 
 class EntityGenerator
 {
+    private array $uses = [
+        EntityBase::class,
+        Entity::class,
+        Table::class,
+    ];
+
     public function __construct(private DatabaseDriver $databaseDriver) {}
 
     public function generate(string $table, string $fqcn): string

@@ -16,6 +16,8 @@ Powered by native attributes, a modular architecture, and zero magic.
 ✅ Default Lazy loading with `FetchType::Lazy`  
 ✅ Optional Eager loading via `FetchType::Eager` and `joins => [...]`  
 ✅ OneToOne support with `JoinColumn` mapping and Closure-based lazy hydration  
+✅ OneToMany & ManyToOne hydration with alias-based eager & deferred strategies  
+✅ Full ManyToMany support: JoinTable mapping, lazy closures & eager join hydration  
 ✅ Cascade persistence & removal via `CascadeType` in UnitOfWork  
 ✅ Alias-based hydration with safe reflection and type conversion  
 ✅ StreamWrapper for CRUD via native PHP streams (`fopen('orm://...')`)  
@@ -213,21 +215,21 @@ unlink("orm://Entity\\User?id=1");
 
 ## 🧱 Architecture
 
-| Component             | Responsibility                                   |
-|-----------------------|--------------------------------------------------|
-| `EntityManager`       | orchestrates all ORM operations                  |
-| `UnitOfWork`          | tracks inserts/updates/deletes with cascades     |
-| `MetadataParser`      | reads PHP attributes into metadata               |
-| `QueryBuilder`        | fluent API for query construction                |
-| `*Builder`            | builds query context based on metadata           |
-| `*SqlRenderer`        | renders SQL based on QueryBuilder                |
-| `StreamWrapper`       | enables PHP stream API for ORM                   |
-| `ReflectionCache`     | pluggable strategy for caching reflection        |
-| `MetadataCache`       | pluggable cache layer for parsed metadata        |
-| `EntityCache`         | identity map for caching hydrated entities       |
-| `RelationHydrator`    | plugs in lazy / eager loading strategies         |
-| `FetchType`           | controls default vs. explicit JOIN behavior      |
-| `Expression`          | powerful WHERE clause construction               |
+| Component             | Responsibility                                                                  |
+|-----------------------|---------------------------------------------------------------------------------|
+| `EntityManager`       | orchestrates all ORM operations                                                 |
+| `UnitOfWork`          | tracks inserts/updates/deletes with cascades                                    |
+| `MetadataParser`      | reads PHP attributes into metadata                                              |
+| `QueryBuilder`        | fluent API for query construction                                               |
+| `*Builder`            | builds query context based on metadata                                          |
+| `*SqlRenderer`        | renders SQL based on QueryBuilder                                               |
+| `StreamWrapper`       | enables PHP stream API for ORM                                                  |
+| `ReflectionCache`     | pluggable strategy for caching reflection                                       |
+| `MetadataCache`       | pluggable cache layer for parsed metadata                                       |
+| `EntityCache`         | identity map for caching hydrated entities                                      |
+| `RelationHydrator`    | plugs in lazy & eager strategies for OneToOne, OneToMany, ManyToOne, ManyToMany |
+| `FetchType`           | controls default vs. explicit JOIN behavior                                     |
+| `Expression`          | powerful WHERE clause construction                                              |
 
 ---
 
@@ -252,8 +254,8 @@ unlink("orm://Entity\\User?id=1");
 - [x] ExpressionBuilder (v1)  
 - [x] Alias-based column hydration  
 - [x] JOINs only on demand via `joins => [...]`  
-- [x] Safe fallback for uninitialized virtual props 
-- [ ] OneToMany / ManyToOne / ManyToMany  
+- [x] Safe fallback for uninitialized virtual props  
+- [x] OneToMany / ManyToOne / ManyToMany (full support incl. JoinTable, Lazy, Eager)  
 - [ ] CLI tooling (generate entities, run migrations)  
 - [ ] Schema sync / migration diffing  
 - [ ] Type coercion (enum, datetime, uuid, etc.)  

@@ -1,5 +1,5 @@
 build:
-	APP_ENV=development docker compose -f docker/compose.yml build --no-cache
+	APP_ENV=development docker compose -f docker/compose.yml build
 
 dev:
 	APP_ENV=development docker compose -f docker/compose.yml up --build --watch

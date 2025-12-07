@@ -2,8 +2,7 @@
 
 namespace ORM\Hydration;
 
-use DateMalformedStringException;
-use ORM\Attributes\OneToMany;
+use ORM\Attributes\ManyToMany;
 use ORM\Cache\ReflectionCache;
 use ORM\Collection;
 use ORM\Entity\EntityBase;
@@ -11,26 +10,21 @@ use ORM\Entity\EntityManager;
 use ORM\Entity\Type\FetchType;
 use ORM\Metadata\MetadataEntity;
 use ORM\Metadata\MetadataParser;
-use ReflectionException;
 
-final readonly class EagerOneToManyHydrator implements RelationHydrator
+class EagerManyToManyHydrator implements RelationHydrator
 {
     public function __construct(
         private EntityManager $entityManager,
         private ReflectionCache $reflectionCache,
         private MetadataParser $metadataParser
     ) {}
-
     public function supports(array $relation): bool
     {
-        return $relation["relation"] instanceof OneToMany
-            && $relation["relation"]->fetch === FetchType::Eager;
+        return $relation["relation"] instanceof ManyToMany
+            && $relation["relation"]->fetch === FetchType::Eager
+            && isset($relation["joinTable"]);
     }
 
-    /**
-     * @throws DateMalformedStringException
-     * @throws ReflectionException
-     */
     public function hydrate(
         EntityBase $parentEntity,
         MetadataEntity $parentMetadata,
@@ -65,7 +59,21 @@ final readonly class EagerOneToManyHydrator implements RelationHydrator
             $collection = new Collection();
         }
 
-        $collection->add($child);
+        $childId = $this->metadataParser->extract($child)[$metadata->getPrimaryKey()];
+        $alreadyExists = false;
+
+        foreach ($collection as $existing) {
+            $existingId = $this->metadataParser->extract($existing)[$metadata->getPrimaryKey()];
+            if ($existingId === $childId) {
+                $alreadyExists = true;
+                break;
+            }
+        }
+
+        if (!$alreadyExists) {
+            $collection->add($child);
+        }
+
         return $collection;
     }
 }

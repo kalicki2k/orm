@@ -24,6 +24,9 @@ WORKDIR /app
 #RUN groupadd -g 33 www-data && useradd -u 33 -g www-data www-data
 
 COPY --chown=www-data:www-data composer.json /app/
+COPY --chown=www-data:www-data ../bin /app/bin
+COPY --chown=www-data:www-data ../.env /app/.env
+COPY --chown=www-data:www-data ../index.php /app/index.php
 COPY --chown=www-data:www-data ../src /app/src
 COPY --chown=www-data:www-data tests /app/tests
 COPY --chown=www-data:www-data phpunit.xml /app/phpunit.xml
@@ -45,4 +48,4 @@ WORKDIR /app
 COPY --from=builder /app /app
 COPY --from=builder /usr/bin/composer /usr/bin/composer
 
-CMD ["php", "src/index.php"]
+CMD ["php", "index.php"]
